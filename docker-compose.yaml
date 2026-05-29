@@ -1,0 +1,26 @@
+services:
+  redis:
+    image: redis:alpine
+    container_name: safse_redis
+    platform: linux/arm64
+    ports:
+      - 6379:6379
+    networks:
+      - safse-net
+  posgresql:
+    image: postgres:18-alpine
+    container_name: safse_postgres
+    platform: linux/arm64
+    env_file: ".env"
+    ports:
+      - 5432:5432
+    networks:
+      - safse-net
+    volumes:
+      - safse-db:/var/lib/postgresql
+
+networks:
+  safse-net:
+
+volumes:
+  safse-db:
