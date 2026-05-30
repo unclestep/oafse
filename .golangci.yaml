@@ -1,0 +1,7 @@
+version: "2"
+
+linters:
+  disable:
+    - godoclint
+    - godot
+    - godox

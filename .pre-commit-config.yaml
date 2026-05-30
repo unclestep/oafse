@@ -1,0 +1,18 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: no-commit-to-branch
+        args: [--branch, main]
+
+  - repo: local
+    hooks:
+      - id: golangci-lint-fix
+        name: golanci-lint fix
+        entry: golangci-lint run --fix
+        language: system
+        types: [go]
+        pass_filenames: false

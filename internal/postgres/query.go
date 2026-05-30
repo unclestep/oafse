@@ -132,7 +132,7 @@ func SavePageCrawl(ctx context.Context, txb TxBeginner, page *Page, links []*Lin
 		return fmt.Errorf("begin transaction: %w", err)
 	}
 
-	defer tx.Rollback(ctx)
+	defer tx.Rollback(ctx) //nolint:errcheck
 
 	_, err = InsertPage(ctx, tx, page)
 	if err != nil {
