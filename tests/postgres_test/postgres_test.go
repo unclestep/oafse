@@ -1,9 +1,11 @@
-package postgres
+package postgres_test
 
 import (
 	"context"
 	"fmt"
 	"testing"
+
+	pg "oafse/internal/postgres"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -36,10 +38,10 @@ func (s *PostgresSuite) SetupSuite() {
 	databaseURL, err := container.ConnectionString(ctx, "sslmode=disable")
 	s.Require().NoError(err)
 
-	err = Migrate(databaseURL)
+	err = pg.Migrate(databaseURL)
 	s.Require().NoError(err)
 
-	pool, err := NewPool(databaseURL)
+	pool, err := pg.NewPool(databaseURL)
 	s.Require().NoError(err)
 	s.pool = pool
 }
@@ -57,11 +59,11 @@ func (s *PostgresSuite) SetupTest() {
 }
 
 func (s *PostgresSuite) TearDownTest() {
-	s.tx.Rollback(context.Background())
+	s.tx.Rollback(context.Background()) //nolint:errcheck
 }
 
 func (s *PostgresSuite) TestInsertPage() {
-	validPages := []*Page{
+	validPages := []*pg.Page{
 		{URL: "URL1", Title: "Title1", Status: 200},
 		{URL: "URL2", Title: "Title2", Status: 200},
 		{URL: "URL3", Title: "Title3", Status: 200},
@@ -70,13 +72,13 @@ func (s *PostgresSuite) TestInsertPage() {
 	for _, page := range validPages {
 		subtestName := fmt.Sprintf("Insert valid Page: %s", page.URL)
 		s.Run(subtestName, func() {
-			id, err := InsertPage(context.Background(), s.tx, page)
+			id, err := pg.InsertPage(context.Background(), s.tx, page)
 			s.NoError(err)
 			s.NotEqual(-1, id)
 		})
 	}
 
-	existedPages := []*Page{
+	existedPages := []*pg.Page{
 		{URL: "URL1", Title: "NewTitle1", Status: 200},
 		{URL: "URL2", Title: "NewTitle2", Status: 200},
 	}
@@ -90,14 +92,14 @@ func (s *PostgresSuite) TestInsertPage() {
 			err := s.tx.QueryRow(ctx, "SELECT count(*) FROM pages").Scan(&before)
 			s.NoError(err)
 
-			_, err = InsertPage(ctx, s.tx, page)
+			_, err = pg.InsertPage(ctx, s.tx, page)
 			s.NoError(err)
 
-			exists, err := PageExists(ctx, s.tx, page.URL)
+			exists, err := pg.PageExists(ctx, s.tx, page.URL)
 			s.NoError(err)
 			s.True(exists)
 
-			updatedPage, err := GetPage(context.Background(), s.tx, page.URL)
+			updatedPage, err := pg.GetPage(context.Background(), s.tx, page.URL)
 			s.NoError(err)
 			s.Equal(updatedPage.Title, page.Title)
 			s.Equal(updatedPage.URL, page.URL)
@@ -110,14 +112,14 @@ func (s *PostgresSuite) TestInsertPage() {
 	}
 }
 
-func (s *PostgresSuite) insertTestPages() []*Page {
-	pages := []*Page{
+func (s *PostgresSuite) insertTestPages() []*pg.Page {
+	pages := []*pg.Page{
 		{URL: "URL1", Title: "Title1", Status: 200},
 		{URL: "URL2", Title: "Title2", Status: 200},
 		{URL: "URL3", Title: "Title3", Status: 200},
 	}
 	for _, page := range pages {
-		id, err := InsertPage(context.Background(), s.tx, page)
+		id, err := pg.InsertPage(context.Background(), s.tx, page)
 		s.Require().NoError(err)
 		s.NotEqual(-1, id)
 		page.ID = id
@@ -128,7 +130,7 @@ func (s *PostgresSuite) insertTestPages() []*Page {
 func (s *PostgresSuite) TestInsertLink() {
 	pages := s.insertTestPages()
 
-	validLinks := []*Link{
+	validLinks := []*pg.Link{
 		{SrcPageID: pages[0].ID, DstURL: "URL2"},
 		{SrcPageID: pages[0].ID, DstURL: "URL3"},
 		{SrcPageID: pages[1].ID, DstURL: "URL1"},
@@ -144,7 +146,7 @@ func (s *PostgresSuite) TestInsertLink() {
 			err := s.tx.QueryRow(ctx, "SELECT count(*) FROM links").Scan(&before)
 			s.NoError(err)
 
-			err = InsertLink(context.Background(), s.tx, link)
+			err = pg.InsertLink(context.Background(), s.tx, link)
 			s.NoError(err)
 
 			err = s.tx.QueryRow(ctx, "SELECT count(*) FROM links").Scan(&after)
@@ -165,7 +167,7 @@ func (s *PostgresSuite) TestInsertLink() {
 			err := s.tx.QueryRow(ctx, "SELECT count(*) FROM links").Scan(&before)
 			s.NoError(err)
 
-			err = InsertLink(ctx, s.tx, link)
+			err = pg.InsertLink(ctx, s.tx, link)
 			s.NoError(err)
 
 			err = s.tx.QueryRow(ctx, "SELECT count(*) FROM links").Scan(&after)
@@ -180,20 +182,20 @@ func (s *PostgresSuite) TestSavePageCrawl() {
 	pages := s.insertTestPages()
 
 	tests := []struct {
-		Page  *Page
-		Links []*Link
+		Page  *pg.Page
+		Links []*pg.Link
 	}{
 		{
-			&Page{URL: "URL4", Title: "Title4", Status: 200},
-			[]*Link{
+			&pg.Page{URL: "URL4", Title: "Title4", Status: 200},
+			[]*pg.Link{
 				{SrcPageID: pages[0].ID, DstURL: "URL4"},
 				{SrcPageID: pages[1].ID, DstURL: "URL4"},
 				{SrcPageID: pages[2].ID, DstURL: "URL4"},
 			},
 		},
 		{
-			&Page{URL: "URL5", Title: "Title5", Status: 200},
-			[]*Link{
+			&pg.Page{URL: "URL5", Title: "Title5", Status: 200},
+			[]*pg.Link{
 				{SrcPageID: pages[0].ID, DstURL: "URL5"},
 				{SrcPageID: pages[1].ID, DstURL: "URL5"},
 				{SrcPageID: pages[2].ID, DstURL: "URL5"},
@@ -210,10 +212,10 @@ func (s *PostgresSuite) TestSavePageCrawl() {
 			err := s.tx.QueryRow(ctx, "SELECT count(*) FROM links").Scan(&before)
 			s.NoError(err)
 
-			err = SavePageCrawl(ctx, s.tx, test.Page, test.Links)
+			err = pg.SavePageCrawl(ctx, s.tx, test.Page, test.Links)
 			s.NoError(err)
 
-			exists, err := PageExists(ctx, s.tx, test.Page.URL)
+			exists, err := pg.PageExists(ctx, s.tx, test.Page.URL)
 			s.NoError(err)
 			s.True(exists)
 
