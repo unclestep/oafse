@@ -7,36 +7,63 @@ on:
       - "**.sql"
       - "**.yaml"
       - "Dockerfile"
-  pull_request:
-    paths:
-      - "**.go"
-      - "**.sql"
-      - "**.yaml"
-      - "Dockerfile"
 
 jobs:
   golangci-lint:
     name: lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - name: Setup Go
-        uses: actions/setup-go@v6
+      - uses: actions/checkout@v6.0.3
+      - name: Setup Go environment
+        uses: actions/setup-go@v6.4.0
         with:
           go-version-file: "go.mod"
       - name: Golangci-lint
         uses: golangci/golangci-lint-action@v9.2.1
+      - name: pre-commit
+        uses: pre-commit/action@v3.0.1
   go-test:
     name: test
     needs: [golangci-lint]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - name: Setup Go
-        uses: actions/setup-go@v6
+      - uses: actions/checkout@v6.0.3
+      - name: Setup Go environment
+        uses: actions/setup-go@v6.4.0
         with:
           go-version-file: "go.mod"
       - name: Download dependencies
         run: go mod download
       - name: Go Test
         run: go test ./...
+  claude-review:
+    name: claude review
+    needs: [golangci-lint, go-test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6.0.3
+        with:
+          fetch-depth: 2
+      - name: Get Diff
+        run: git diff HEAD~1 HEAD > /tmp/commit.diff
+      - name: Run Claude review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{secrets.CLAUDE_CODE_OAUTH_TOKEN}}
+          prompt: |
+            You are a code reviewer. Analyze the following git diff and report:
+              1. Potential bugs (logic errors, unhandled errors)
+              2. Potential optimizations
+              3. Code style issues (readability, Go idioms)
+
+              Be concise. In nothing is found, write "No issues found."
+              Write your findings to /tmp/claude-review.md
+
+            Diff:
+            $(cat /tmp/commit.diff)
+      - name: Post commit comment
+        uses: peter-evans/commit-comment@v4.0.0
+        with:
+          body-path: /tmp/claude-review.md

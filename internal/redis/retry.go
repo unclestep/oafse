@@ -1,0 +1,53 @@
+package redis
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/redis/go-redis/v9"
+)
+
+type Retry struct {
+	rdb *redis.Client
+}
+
+var enqueueURLsScript = redis.NewScript(`
+	local keyRetry = KEYS[1]
+	local keyURLStatus = KEYS[2]
+	local keyQueue = KEYS[3]
+	local now = ARGV[1]
+	local newStatus = ARGV[2]
+
+	local urls = redis.call('ZRANGE', keyRetry, '-inf', now, 'BYSCORE')
+	if #urls == 0 then
+		return redis.call('ZCARD', keyRetry)
+	end
+
+	for i = 1, #urls do
+		redis.call('ZREM', keyRetry, urls[i])
+
+		local binInfo = redis.call('HGET', keyURLStatus, urls[i])
+		local info = cjson.decode(binInfo)
+		info['status'] = newStatus
+		local newBinInfo = cjson.encode(info)
+		redis.call('HSET', keyURLStatus, urls[i], newBinInfo)
+
+		redis.call('LPUSH', keyQueue, urls[i])
+
+	end
+
+	return redis.call('ZCARD', keyRetry)
+`)
+
+func (r *Retry) EnqueueURLs(ctx context.Context) (int64, error) {
+	remaining, err := enqueueURLsScript.Run(
+		ctx, r.rdb,
+		[]string{keyRetry, keyURLStatus, keyQueue},
+		time.Now().UnixNano(), StatusQueue,
+	).Int64()
+	if err != nil && err != redis.Nil {
+		return 0, fmt.Errorf("enqueue retry urls: %w", err)
+	}
+	return remaining, nil
+}
