@@ -14,6 +14,13 @@ type Processing struct {
 	workers int
 }
 
+func NewProcessing(rdb *redis.Client, workers int) *Processing {
+	return &Processing{
+		rdb:     rdb,
+		workers: workers,
+	}
+}
+
 var retryURLScript = redis.NewScript(`
 	local keyURLStatus = KEYS[1]
 	local keyProcessingIndex = KEYS[2]
@@ -42,8 +49,8 @@ var retryURLScript = redis.NewScript(`
 func (p *Processing) RetryURL(ctx context.Context, url string, nextRetryTime time.Time) error {
 	err := retryURLScript.Run(
 		ctx, p.rdb,
-		[]string{keyURLStatus, keyProcessingIndex, keyRetry},
-		url, prefixProcessingQueue, StatusRetry, nextRetryTime.UnixNano(),
+		[]string{KeyURLStatus, KeyProcessingIndex, KeyRetry},
+		url, PrefixProcessingQueue, StatusRetry, nextRetryTime.UnixMilli(),
 	).Err()
 	if err != nil {
 		return fmt.Errorf("retry url: %w", err)
@@ -74,8 +81,8 @@ var markProcessedScript = redis.NewScript(`
 func (p *Processing) MarkProcessed(ctx context.Context, url string) error {
 	err := markProcessedScript.Run(
 		ctx, p.rdb,
-		[]string{keyURLStatus, keyProcessingIndex},
-		url, prefixProcessingQueue, StatusProcessed,
+		[]string{KeyURLStatus, KeyProcessingIndex},
+		url, PrefixProcessingQueue, StatusProcessed,
 	).Err()
 	if err != nil {
 		return fmt.Errorf("mark processed: %w", err)
@@ -128,8 +135,8 @@ var recoverScript = redis.NewScript(`
 func (p *Processing) RecoverURL(ctx context.Context, url string) error {
 	err := recoverScript.Run(
 		ctx, p.rdb,
-		[]string{keyURLStatus, keyProcessingIndex, keyQueue},
-		url, prefixProcessingQueue, StatusQueue,
+		[]string{KeyURLStatus, KeyProcessingIndex, KeyQueue},
+		url, PrefixProcessingQueue, StatusQueue,
 	).Err()
 	if err != nil {
 		return fmt.Errorf("recover url: %w", err)
@@ -140,14 +147,14 @@ func (p *Processing) RecoverURL(ctx context.Context, url string) error {
 func (p *Processing) HealthCheck(ctx context.Context, worryThreshold time.Duration) error {
 	var cursor uint64
 	for {
-		urls, nextCursor, err := p.rdb.SScan(ctx, keyProcessingIndex, cursor, "", int64(p.workers)).Result()
+		urls, nextCursor, err := p.rdb.SScan(ctx, KeyProcessingIndex, cursor, "", int64(p.workers)).Result()
 
 		if err != nil {
 			return fmt.Errorf("health check sscan: %w", err)
 		}
 
 		for _, url := range urls {
-			bytesJSON, err := p.rdb.HGet(ctx, keyURLStatus, url).Result()
+			bytesJSON, err := p.rdb.HGet(ctx, KeyURLStatus, url).Result()
 			if err == redis.Nil {
 				if err := p.RecoverURL(ctx, url); err != nil {
 					return fmt.Errorf("health check recover orphaned url: %w", err)
@@ -162,7 +169,7 @@ func (p *Processing) HealthCheck(ctx context.Context, worryThreshold time.Durati
 				return fmt.Errorf("health check unmarshal: %w", err)
 			}
 
-			if time.Now().UnixNano()-info.ProcessingStartTime >= worryThreshold.Nanoseconds() {
+			if time.Now().UnixMilli()-info.ProcessingStartTime >= worryThreshold.Nanoseconds() {
 				if err := p.RecoverURL(ctx, url); err != nil {
 					return fmt.Errorf("health check recover url: %w", err)
 				}

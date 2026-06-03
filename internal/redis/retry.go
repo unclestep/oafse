@@ -12,6 +12,10 @@ type Retry struct {
 	rdb *redis.Client
 }
 
+func NewRetry(rdb *redis.Client) *Retry {
+	return &Retry{rdb: rdb}
+}
+
 var enqueueURLsScript = redis.NewScript(`
 	local keyRetry = KEYS[1]
 	local keyURLStatus = KEYS[2]
@@ -43,8 +47,8 @@ var enqueueURLsScript = redis.NewScript(`
 func (r *Retry) EnqueueURLs(ctx context.Context) (int64, error) {
 	remaining, err := enqueueURLsScript.Run(
 		ctx, r.rdb,
-		[]string{keyRetry, keyURLStatus, keyQueue},
-		time.Now().UnixNano(), StatusQueue,
+		[]string{KeyRetry, KeyURLStatus, KeyQueue},
+		time.Now().UnixMilli(), StatusQueue,
 	).Int64()
 	if err != nil && err != redis.Nil {
 		return 0, fmt.Errorf("enqueue retry urls: %w", err)

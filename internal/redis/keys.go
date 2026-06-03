@@ -1,13 +1,13 @@
 package redis
 
 const (
-	prefixProcessingQueue = "crawler:processing:queue"
-	keyProcessingIndex    = "crawler:processing:index"
-	keyURLStatus          = "crawler:url:status"
-	keyQueue              = "crawler:queue"
-	keyRetry              = "crawler:retry"
+	PrefixProcessingQueue = "crawler:processing:queue"
+	KeyProcessingIndex    = "crawler:processing:index"
+	KeyURLStatus          = "crawler:url:status"
+	KeyQueue              = "crawler:queue"
+	KeyRetry              = "crawler:retry"
 )
 
-func workerKey(workerID string) string {
-	return prefixProcessingQueue + ":" + workerID
+func WorkerKey(workerID string) string {
+	return PrefixProcessingQueue + ":" + workerID
 }

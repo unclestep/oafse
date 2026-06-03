@@ -15,10 +15,19 @@ type Curator struct {
 	*Retry
 }
 
+func NewCurator(rdb *redis.Client, queue *Queue, processing *Processing, retry *Retry) *Curator {
+	return &Curator{
+		rdb:        rdb,
+		Queue:      queue,
+		Processing: processing,
+		Retry:      retry,
+	}
+}
+
 func (r *Curator) GetURLInfo(ctx context.Context, url string) (*URLInfo, error) {
 	var info URLInfo
 
-	bytesInfo, err := r.rdb.HGet(ctx, keyURLStatus, url).Result()
+	bytesInfo, err := r.rdb.HGet(ctx, KeyURLStatus, url).Result()
 	if err == redis.Nil {
 		return nil, fmt.Errorf("get url info: url not found")
 	} else if err != nil {
