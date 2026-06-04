@@ -15,6 +15,6 @@ type URLInfo struct {
 	Status              URLStatus `json:"status"`
 	WorkerID            string    `json:"worker_id"`
 	ProcessingStartTime int64     `json:"processing_start_time"` // UnixMilli format
-	Tries               int       `json:"retries"`
+	Tries               int       `json:"tries"`
 	NextRetryTime       int64     `json:"next_retry_time"` // UnixMilli format
 }

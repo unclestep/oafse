@@ -121,7 +121,7 @@ func (s *RedisSuite) TestPopURLConcurrent() {
 
 				s.Equal(sredis.StatusProcessing, info.Status, "Workers Processing Queue")
 				s.Equal(workerID, info.WorkerID, "Workers ID")
-				s.Greater(info.ProcessingStartTime, time.Now().UnixMilli()-time.Minute.Nanoseconds(), "Processing Start Time")
+				s.Greater(info.ProcessingStartTime, time.Now().UnixMilli()-time.Minute.Milliseconds(), "Processing Start Time")
 			}
 		}()
 	}
