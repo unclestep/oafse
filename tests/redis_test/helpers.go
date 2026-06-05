@@ -2,6 +2,7 @@ package redis_test
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	sredis "oafse/internal/redis"
@@ -40,4 +41,28 @@ func (s *RedisSuite) pushURLs() [][]string {
 		s.Equal(len(group), len(pushed))
 	}
 	return urls
+}
+
+func (s *RedisSuite) prepareProcessingQueue(urls [][]string) {
+	for i, group := range urls {
+		pushed, err := s.curator.PushURLs(context.Background(), group)
+		s.NoError(err)
+		s.Equal(len(group), len(pushed))
+
+		var allPopped []string
+		for {
+			popped, err := s.curator.PopURL(context.Background(), fmt.Sprint(i))
+			if !s.NoError(err) {
+				return
+			}
+
+			if popped == "" {
+				break
+			}
+
+			allPopped = append(allPopped, popped)
+		}
+
+		s.ElementsMatch(group, allPopped)
+	}
 }
