@@ -15,6 +15,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+      id-token: write
     steps:
       - uses: actions/checkout@v6.0.3
 
@@ -28,4 +29,4 @@ jobs:
               2. Potential optimizations
               3. Code style issues (readability, Go idioms)
 
-            Be concise. If nothing is found, say "No issues found."
+            Be concise. If nothing serious is found, say "No issues found."
