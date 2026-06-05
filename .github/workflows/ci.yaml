@@ -7,33 +7,29 @@ on:
       - "**.sql"
       - "**.yaml"
       - "Dockerfile"
-  pull_request:
-    paths:
-      - "**.go"
-      - "**.sql"
-      - "**.yaml"
-      - "Dockerfile"
 
 jobs:
   golangci-lint:
     name: lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - name: Setup Go
-        uses: actions/setup-go@v6
+      - uses: actions/checkout@v6.0.3
+      - name: Setup Go environment
+        uses: actions/setup-go@v6.4.0
         with:
           go-version-file: "go.mod"
       - name: Golangci-lint
         uses: golangci/golangci-lint-action@v9.2.1
+      - name: pre-commit
+        uses: pre-commit/action@v3.0.1
   go-test:
     name: test
     needs: [golangci-lint]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - name: Setup Go
-        uses: actions/setup-go@v6
+      - uses: actions/checkout@v6.0.3
+      - name: Setup Go environment
+        uses: actions/setup-go@v6.4.0
         with:
           go-version-file: "go.mod"
       - name: Download dependencies
