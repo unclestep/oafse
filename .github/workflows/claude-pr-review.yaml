@@ -24,10 +24,23 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           show_full_output: true
+          settings: |
+            {
+              "permissions": {
+                "allow": [
+                  "Bash(gh pr view:*)",
+                  "Bash(gh pr diff:*)",
+                  "Bash(gh pr comment*)"
+              ],
+              "deny": []
+              }
+            }
           prompt: |
-            You are a code reviewer. Analyze the following pull request and report:
+            You are a code reviewer. Review PR #${{ github.event.pull_request.number }}.
+            Analyze and report:
               1. Potential bugs (logic errors, unhandled errors)
               2. Potential optimizations
               3. Code style issues (readability, Go idioms)
-
-            Be concise. If nothing serious is found, say "No issues found."
+            Be concise. If nothing is found, say "No issues found."
+            After writing the review, post it as a comment using:
+            gh pr comment ${{ github.event.pull_request.number }} --body "<your review>"
