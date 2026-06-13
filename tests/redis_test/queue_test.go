@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	sredis "oafse/internal/redis"
+	sredis "oafse/internal/infrastructure/storage/redis"
 )
 
 func (s *RedisSuite) TestQueuePushURL() {

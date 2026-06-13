@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	sredis "oafse/internal/redis"
+	sredis "oafse/internal/infrastructure/storage/redis"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/suite"

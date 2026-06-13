@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	sredis "oafse/internal/redis"
+	sredis "oafse/internal/infrastructure/storage/redis"
 )
 
 func (s *RedisSuite) checkQueue(expQueueLen, expMetaLen int) {
@@ -19,12 +19,12 @@ func (s *RedisSuite) checkQueue(expQueueLen, expMetaLen int) {
 }
 
 func (s *RedisSuite) createURLs() [][]string {
-	var alpha = int(byte('Z')-byte('A')) + 1
+	alpha := int(byte('Z')-byte('A')) + 1
 	urls := make([][]string, alpha)
 
 	for i := range alpha {
 		for j := 1; j <= 3; j++ {
-			var ch = byte('A') + byte(i)
+			ch := byte('A') + byte(i)
 			urls[i] = append(urls[i], strings.Repeat(string(ch), j))
 		}
 	}

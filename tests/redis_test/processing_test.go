@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	sredis "oafse/internal/redis"
+	sredis "oafse/internal/infrastructure/storage/redis"
 )
 
 func (s *RedisSuite) TestGetURL() {
@@ -19,7 +19,7 @@ func (s *RedisSuite) TestGetURL() {
 
 	s.Run("Get valid URL", func() {
 		url := [][]string{
-			[]string{"URL"},
+			{"URL"},
 		}
 		s.prepareProcessingQueue(url)
 
@@ -41,7 +41,7 @@ func (s *RedisSuite) TestRetryURL() {
 
 	s.Run("Real URL Retry", func() {
 		url := [][]string{
-			[]string{"URL"},
+			{"URL"},
 		}
 
 		s.prepareProcessingQueue(url)
@@ -62,7 +62,6 @@ func (s *RedisSuite) TestRetryURL() {
 		s.NoError(err)
 		s.Equal(float64(retryTime.UnixMilli()), score)
 	})
-
 }
 
 func (s *RedisSuite) TestRetryURLConcurrent() {
@@ -119,7 +118,6 @@ func (s *RedisSuite) TestRetryURLConcurrent() {
 				s.Equal(1, info.Tries)
 				s.Equal(retryTime.UnixMilli(), info.NextRetryTime)
 			}
-
 		}()
 	}
 	wg.Wait()
@@ -141,13 +139,13 @@ func (s *RedisSuite) TestRetryURLConcurrent() {
 
 func (s *RedisSuite) TestMarkProcessed() {
 	urls := [][]string{
-		[]string{"1", "2", "3"},
+		{"1", "2", "3"},
 	}
 
 	tests := [][]string{
-		[]string{string(sredis.StatusProcessed), "1"},
-		[]string{string(sredis.StatusFailure), "2"},
-		[]string{string(sredis.StatusManual), "3"},
+		{string(sredis.StatusProcessed), "1"},
+		{string(sredis.StatusFailure), "2"},
+		{string(sredis.StatusManual), "3"},
 	}
 
 	s.prepareProcessingQueue(urls)

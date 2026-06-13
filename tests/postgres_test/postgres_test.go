@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	pg "oafse/internal/postgres"
+	pg "oafse/internal/infrastructure/storage/postgres"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"

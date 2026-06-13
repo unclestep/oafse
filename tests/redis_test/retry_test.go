@@ -2,10 +2,11 @@ package redis_test
 
 import (
 	"context"
-	redis "github.com/redis/go-redis/v9"
 	"time"
 
-	sredis "oafse/internal/redis"
+	redis "github.com/redis/go-redis/v9"
+
+	sredis "oafse/internal/infrastructure/storage/redis"
 )
 
 func (s *RedisSuite) TestEnqueueURLsBasic() {
