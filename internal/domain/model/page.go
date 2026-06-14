@@ -1,15 +1,18 @@
 package model
 
+import "time"
+
 type Page struct {
-	URL         *URL
+	URL         string
 	Title       string
 	Description string
 	Content     string
-	Links       []*URL
+	CrawledAt   time.Time
+	Links       []string
 }
 
 func NewPage(url *URL) *Page {
 	return &Page{
-		URL: url,
+		URL: url.String(),
 	}
 }

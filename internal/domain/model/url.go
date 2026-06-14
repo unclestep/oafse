@@ -9,10 +9,8 @@ import (
 type URL struct {
 	*url.URL
 
-	Status   CrawlStatus
-	Try      int
-	TakeOnAt time.Time
-	RetryAt  time.Time
+	Try     int
+	RetryAt time.Time
 }
 
 type CrawlStatus int

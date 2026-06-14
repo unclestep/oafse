@@ -3,8 +3,7 @@ CREATE TABLE IF NOT EXISTS pages(
     url TEXT UNIQUE NOT NULL,
     title TEXT,
     description TEXT,
-    body TEXT,
-    status SMALLINT,
+    content TEXT,
     crawled_at TIMESTAMP DEFAULT now()
 );
 

@@ -2,15 +2,12 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"oafse/internal/application/port"
 	"oafse/internal/domain/model"
 )
-
-type ParseUseCase interface {
-	Execute(ctx context.Context) error
-}
 
 type Parse struct {
 	cfg       *port.ParseConfig
@@ -30,12 +27,25 @@ func NewParse(cfg *port.ParseConfig, repo port.PageRepo, proc port.Processing, f
 	}
 }
 
-func (p *Parse) Execute(ctx context.Context) (*model.URL, error) {
+func (p *Parse) Execute(ctx context.Context) (*port.ParseCmd, error) {
 	wrap := func(err error) error {
 		return fmt.Errorf("parse: %w", err)
 	}
 
 	url, err := p.repo.TakeOn(ctx)
+	if errors.Is(err, port.ErrQueueEmpty) {
+		done, err := p.repo.IsCrawlComplete(ctx)
+		if err != nil {
+			return nil, wrap(err)
+		}
+		if done {
+			return &port.ParseCmd{Directive: port.DirectiveStop, SleepFor: 0}, nil
+		}
+		return &port.ParseCmd{
+			Directive: port.DirectiveSleep,
+			SleepFor:  100,
+		}, nil
+	}
 	if err != nil {
 		return nil, wrap(err)
 	}
@@ -48,7 +58,7 @@ func (p *Parse) Execute(ctx context.Context) (*model.URL, error) {
 	retry := p.proc.DecideRetry(url, p.cfg)
 	if retry || fd.Status == port.FetchRetry {
 		p.repo.Retry(ctx, url)
-		return url, nil
+		return &port.ParseCmd{Directive: port.DirectiveContinue, SleepFor: 0}, nil
 	}
 
 	page, err := p.extractor.Extract(fd)

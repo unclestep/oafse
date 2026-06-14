@@ -23,7 +23,9 @@ func Migrate(databaseURL string) error {
 		return fmt.Errorf("migration init: %w", err)
 	}
 
-	defer m.Close() //nolint:errcheck
+	defer func() {
+		_, _ = m.Close()
+	}()
 
 	if err = m.Up(); err != nil && err != migrate.ErrNoChange {
 		return fmt.Errorf("migration up: %w", err)
