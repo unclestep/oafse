@@ -37,9 +37,9 @@ var enqueueURLsScript = redis.NewScript(`
 			info = {
 				status = newStatus,
 				worker_id = "",
-				tries = 1,
-				processing_start_time = -1,
-				next_retry_time = -1,
+				try = 1,
+				take_on_at = -1,
+				retry_at = -1,
 			}
 		else
 			info = cjson.decode(binInfo)

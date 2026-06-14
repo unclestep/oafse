@@ -38,7 +38,7 @@ var popURLScript = redis.NewScript(`
 
 	info['status'] = newStatus
 	info['worker_id'] = workerID
-	info['taken_on_at'] = tonumber(takenOnAt)
+	info['take_on_at'] = tonumber(takeOnAt)
 
 	local newJSON = cjson.encode(info)
 	redis.call('HSET', keyURLStatus, url, newJSON)
@@ -100,9 +100,9 @@ var pushURLScript = redis.NewScript(`
 	local info = {
 		status = status,
 		worker_id = '',
-		tries = 0,
-		processing_start_time = -1,
-		next_retry_time = -1,
+		try = 0,
+		take_on_at = -1,
+		retry_at = -1,
 	}
 
 	local pushedJSON = cjson.encode(info)

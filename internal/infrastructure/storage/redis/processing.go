@@ -38,7 +38,7 @@ var retryURLScript = redis.NewScript(`
 	local url = ARGV[1]
 	local prefixProcessingQueue = ARGV[2]
 	local newStatus = ARGV[3]
-	local next_retry_time = ARGV[4]
+	local retryAt = ARGV[4]
 
 	local oldJSON = redis.call('HGET', keyURLStatus, url)
 	if not oldJSON then
@@ -48,15 +48,15 @@ var retryURLScript = redis.NewScript(`
 
 	local keyProcessingQueue = prefixProcessingQueue .. ':' .. info['worker_id']
 	info['status'] = newStatus
-	info['tries'] = info['tries'] + 1
-	info['next_retry_time'] = tonumber(next_retry_time)
+	info['try'] = info['try'] + 1
+	info['retry_at'] = tonumber(retryAt)
 
 	local newJSON = cjson.encode(info)
 
 	redis.call('HSET', keyURLStatus, url, newJSON)
 	redis.call('LREM', keyProcessingQueue, 1, url)
 	redis.call('SREM', keyProcessingIndex, url)
-	redis.call('ZADD', keyRetry, next_retry_time, url)
+	redis.call('ZADD', keyRetry, retryAt, url)
 
 	return 1
 `)
@@ -124,9 +124,9 @@ var recoverScript = redis.NewScript(`
 		local info = {
 			status = newStatus,
 			worker_id = "",
-			tries = 0,
-			processing_start_time = -1,
-			next_retry_time = -1,
+			try = 0,
+			take_on_at = -1,
+			retry_at = -1,
 		}
 		local binInfo = cjson.encode(info)
 

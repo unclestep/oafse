@@ -63,6 +63,10 @@ func (r *URLRepoCache) RetryURL(ctx context.Context, url string, retryAt time.Ti
 	return nil
 }
 
+func (r *URLRepoCache) GiveUpURL(ctx context.Context, url string) error {
+	return r.s.GiveUpURL(ctx, url)
+}
+
 func (r *URLRepoCache) Done(ctx context.Context, url string) error {
 	wrap := func(err error) error {
 		return fmt.Errorf("done: %w", err)
@@ -75,7 +79,10 @@ func (r *URLRepoCache) Done(ctx context.Context, url string) error {
 	return nil
 }
 
-func (r *URLRepoCache) GetCrawlMetadata(ctx context.Context) *port.CrawlMetadata {
-	md := r.s.GetCrawlMetadata(ctx)
-	return mapper.ToDomainCrawlMetadata(md)
+func (r *URLRepoCache) GetCrawlMetadata(ctx context.Context) (*port.CrawlMetadata, error) {
+	md, err := r.s.GetCrawlMetadata(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get crawl metadata: %w", err)
+	}
+	return mapper.ToDomainCrawlMetadata(md), nil
 }

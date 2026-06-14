@@ -3,14 +3,12 @@ package model
 import (
 	"fmt"
 	"net/url"
-	"time"
 )
 
 type URL struct {
 	*url.URL
 
 	Try     int
-	RetryAt time.Time
 }
 
 type CrawlStatus int
@@ -33,8 +31,6 @@ func (p CrawlStatus) String() string {
 		return "Done"
 	case RetryCrawlStatus:
 		return "Retry"
-	case ManualCrawlStatus:
-		return "Manual"
 	case GiveUpCrawlStatus:
 		return "GiveUP"
 	default:

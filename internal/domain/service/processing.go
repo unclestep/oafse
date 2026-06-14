@@ -14,12 +14,12 @@ func NewProcessing() *Processing {
 	return &Processing{}
 }
 
-func (s *Processing) DecideRetry(url *model.URL, conf *port.CrawlConfig) bool {
+func (s *Processing) DecideRetry(url *model.URL, conf *port.CrawlConfig) (bool, time.Time) {
 	if conf.TryLim != -1 && url.Try >= conf.TryLim-1 {
-		return false
+		return false, time.Time{}
 	}
 
 	url.Try++
-	url.RetryAt = time.Now().Add(time.Duration(math.Pow(float64(conf.TryBaseInterval), float64(url.Try))))
-	return true
+	retryAt := time.Now().Add(conf.TryBaseInterval * time.Duration(math.Pow(2, float64(url.Try))))
+	return true, retryAt
 }

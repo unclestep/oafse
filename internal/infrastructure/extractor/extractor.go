@@ -56,7 +56,7 @@ func (e *Extractor) Extract(fetchData *port.FetchData) (*model.Page, error) {
 	}
 
 	return &model.Page{
-		URL:         fetchData.URL,
+		URL:         fetchData.URL.String(),
 		Title:       art.Title(),
 		Description: art.Excerpt(),
 		Content:     sb.String(),
@@ -64,10 +64,8 @@ func (e *Extractor) Extract(fetchData *port.FetchData) (*model.Page, error) {
 	}, nil
 }
 
-func (e *Extractor) extractMarkdown()
-
-func (e *Extractor) extractLinks(root *html.Node, base *model.URL) []*model.URL {
-	var links []*model.URL
+func (e *Extractor) extractLinks(root *html.Node, base *model.URL) []string {
+	var links []string
 
 	var dfs func(*html.Node)
 	dfs = func(n *html.Node) {
@@ -85,7 +83,7 @@ func (e *Extractor) extractLinks(root *html.Node, base *model.URL) []*model.URL 
 						if err != nil {
 							break
 						}
-						links = append(links, cand)
+						links = append(links, cand.String())
 					}
 				}
 			}

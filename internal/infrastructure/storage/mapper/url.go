@@ -16,7 +16,6 @@ func ToDomainURL(u *storage.URLCache) (*domain.URL, error) {
 	return &domain.URL{
 		URL:     parsed,
 		Try:     u.Try,
-		RetryAt: u.RetryAt,
 	}, nil
 }
 
@@ -24,7 +23,6 @@ func ToStorageURL(u *domain.URL) *storage.URLCache {
 	return &storage.URLCache{
 		URL:     u.String(),
 		Try:     u.Try,
-		RetryAt: u.RetryAt,
 	}
 }
 

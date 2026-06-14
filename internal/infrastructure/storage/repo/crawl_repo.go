@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"oafse/internal/application/port"
 	"oafse/internal/domain/model"
 )
 
@@ -32,6 +33,10 @@ func (r *CrawlRepo) RetryURL(ctx context.Context, url string, retryAt time.Time)
 	return r.urlRepoCache.RetryURL(ctx, url, retryAt)
 }
 
+func (r *CrawlRepo) GiveUpURL(ctx context.Context, url string) error {
+	return r.urlRepoCache.GiveUpURL(ctx, url)
+}
+
 func (r *CrawlRepo) Done(ctx context.Context, page *model.Page) error {
 	wrap := func(err error) error {
 		return fmt.Errorf("crawl repo: done: %w", err)
@@ -45,4 +50,8 @@ func (r *CrawlRepo) Done(ctx context.Context, page *model.Page) error {
 		return wrap(err)
 	}
 	return nil
+}
+
+func (r *CrawlRepo) GetCrawlMetadata(ctx context.Context) (*port.CrawlMetadata, error) {
+	return r.urlRepoCache.GetCrawlMetadata(ctx)
 }
