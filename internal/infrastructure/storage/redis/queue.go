@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	"oafse/internal/application/port"
+	"oafse/internal/infrastructure/storage/model"
+
 	"github.com/redis/go-redis/v9"
 )
 
@@ -22,7 +25,7 @@ var popURLScript = redis.NewScript(`
 	local keyProcessingQueue = KEYS[3]
 	local keyProcessingIndex = KEYS[4]
 	local workerID = ARGV[1]
-	local processingStartTime = ARGV[2]
+	local takeOnAt = ARGV[2]
 	local newStatus = ARGV[3]
 
 	local url = redis.call("LMOVE", keyQueue, keyProcessingQueue, "RIGHT", "LEFT")
@@ -35,32 +38,51 @@ var popURLScript = redis.NewScript(`
 
 	info['status'] = newStatus
 	info['worker_id'] = workerID
-	info['processing_start_time'] = tonumber(processingStartTime)
+	info['taken_on_at'] = tonumber(takenOnAt)
 
 	local newJSON = cjson.encode(info)
 	redis.call('HSET', keyURLStatus, url, newJSON)
 
 	redis.call('SADD', keyProcessingIndex, url)
 
-	return url
+	return {url, info['try'], info['retry_at']}
 `)
 
-func (q *Queue) PopURL(ctx context.Context, workerID string) (string, error) {
+func (q *Queue) TakeOn(ctx context.Context, workerID string) (*model.URLCache, error) {
 	keyProcessingQueue := WorkerKey(workerID)
 
-	url, err := popURLScript.Run(
+	vals, err := popURLScript.Run(
 		ctx, q.rdb,
 		[]string{KeyQueue, KeyURLStatus, keyProcessingQueue, KeyProcessingIndex},
 		workerID, time.Now().UnixMilli(), string(StatusProcessing),
-	).Text()
+	).Slice()
 	if err == redis.Nil {
-		return "", nil
+		return nil, port.ErrQueueEmpty
 	}
 	if err != nil {
-		return "", fmt.Errorf("pop url lua: %w", err)
+		return nil, fmt.Errorf("take on: %w", err)
 	}
 
-	return url, nil
+	url, ok := vals[0].(string)
+	if !ok {
+		return nil, fmt.Errorf("take on: unexpected url type %T", vals[0])
+	}
+
+	try, ok := vals[1].(int64)
+	if !ok {
+		return nil, fmt.Errorf("take on: unexpected try type %T", vals[1])
+	}
+
+	retryAt, ok := vals[2].(int64)
+	if !ok {
+		return nil, fmt.Errorf("take on: unexpected retry_at type %T", vals[2])
+	}
+
+	return &model.URLCache{
+		URL:     url,
+		Try:     int(try),
+		RetryAt: time.UnixMilli(retryAt),
+	}, nil
 }
 
 var pushURLScript = redis.NewScript(`

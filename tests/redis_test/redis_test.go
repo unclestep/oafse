@@ -20,7 +20,7 @@ type RedisSuite struct {
 	suite.Suite
 	container *tcredis.RedisContainer
 	rdb       *redis.Client
-	curator   *sredis.Curator
+	curator   *sredis.URLDS
 }
 
 func (s *RedisSuite) SetupSuite() {
@@ -43,7 +43,7 @@ func (s *RedisSuite) SetupSuite() {
 	queue := sredis.NewQueue(rdb)
 	retry := sredis.NewRetry(rdb)
 	processing := sredis.NewProcessing(rdb, WorkersCount)
-	s.curator = sredis.NewCurator(rdb, queue, processing, retry)
+	s.curator = sredis.NewURLDS(rdb, queue, processing, retry)
 }
 
 func (s *RedisSuite) TearDownSuite() {

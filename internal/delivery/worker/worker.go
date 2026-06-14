@@ -2,24 +2,34 @@ package worker
 
 import (
 	"context"
-	"oafse/internal/application/usecase"
 	"sync"
+	"time"
+
+	"oafse/internal/application/port"
 )
 
 type Worker struct {
-	id int
-	parse usecase.ParseUseCase
+	id    string
+	parse port.ParseUseCase
 }
 
 func (w *Worker) run(ctx context.Context, wg *sync.WaitGroup) {
-	defer wh.Done()
+	defer wg.Done()
+mainloop:
 	for {
 		select {
-			case <-ctx.Done();
+		case <-ctx.Done():
 			return
 		default:
-			if err := w.parse.Execute(ctx); err != nil
+			if cmd, _ := w.parse.Execute(ctx, w.id); cmd != nil {
+				switch cmd.Directive {
+				case port.DirectiveSleep:
+					time.Sleep(cmd.SleepFor)
+				case port.DirectiveStop:
+					break mainloop
+				default:
+				}
+			}
 		}
 	}
 }
-

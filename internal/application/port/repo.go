@@ -19,9 +19,10 @@ type CrawlMetadata struct {
 }
 
 type CrawlRepo interface {
-	TakeOn(ctx context.Context, workerID int) (*model.URL, error)
-	PushURLs(ctx context.Context, urls []*model.URL) ([]*model.URL, error)
-	Retry(ctx context.Context, url *model.URL) error
+	TakeOn(ctx context.Context, workerID string) (*model.URL, error)
+	PushURLs(ctx context.Context, urls []string) ([]string, error)
+	RetryURL(ctx context.Context, url string, retryAt time.Time) error
+	GiveUpURL(ctx context.Context, url string) error
 	Done(ctx context.Context, page *model.Page) error
-	GetCrawlMetadata(ctx context.Context) *CrawlMetadata
+	GetCrawlMetadata(ctx context.Context) (*CrawlMetadata, error)
 }

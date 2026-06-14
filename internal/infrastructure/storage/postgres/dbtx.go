@@ -12,13 +12,5 @@ type DBTX interface {
 	Query(ctx context.Context, sql string, arguments ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, arguments ...any) pgx.Row
 	SendBatch(ctx context.Context, b *pgx.Batch) pgx.BatchResults
-}
-
-type TxBeginner interface {
 	Begin(ctx context.Context) (pgx.Tx, error)
-}
-
-type link struct {
-	srcPageID int64
-	dstURL    string
 }

@@ -165,7 +165,6 @@ func (p *Processing) HealthCheck(ctx context.Context, worryThreshold time.Durati
 	var cursor uint64
 	for {
 		urls, nextCursor, err := p.rdb.SScan(ctx, KeyProcessingIndex, cursor, "", int64(p.workers)).Result()
-
 		if err != nil {
 			return fmt.Errorf("health check sscan: %w", err)
 		}
@@ -186,7 +185,7 @@ func (p *Processing) HealthCheck(ctx context.Context, worryThreshold time.Durati
 				return fmt.Errorf("health check unmarshal: %w", err)
 			}
 
-			if time.Now().UnixMilli()-info.ProcessingStartTime >= worryThreshold.Milliseconds() {
+			if time.Now().UnixMilli()-info.TakeOnAt >= worryThreshold.Milliseconds() {
 				if err := p.RecoverURL(ctx, url); err != nil {
 					return fmt.Errorf("health check recover url: %w", err)
 				}

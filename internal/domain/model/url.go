@@ -21,7 +21,6 @@ const (
 	DoneCrawlStatus
 	GiveUpCrawlStatus
 	RetryCrawlStatus
-	ManualCrawlStatus
 )
 
 func (p CrawlStatus) String() string {

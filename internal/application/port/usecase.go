@@ -6,7 +6,7 @@ import (
 )
 
 type ParseUseCase interface {
-	Execute(ctx context.Context) (*ParseCmd, error)
+	Execute(ctx context.Context, workerID string) (*ParseCmd, error)
 }
 
 type ParseCmd struct {

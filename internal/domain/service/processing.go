@@ -14,9 +14,8 @@ func NewProcessing() *Processing {
 	return &Processing{}
 }
 
-func (s *Processing) DecideRetry(url *model.URL, conf *port.ParseConfig) bool {
+func (s *Processing) DecideRetry(url *model.URL, conf *port.CrawlConfig) bool {
 	if conf.TryLim != -1 && url.Try >= conf.TryLim-1 {
-		url.Status = model.GiveUpCrawlStatus
 		return false
 	}
 

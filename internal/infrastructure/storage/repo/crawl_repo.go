@@ -3,6 +3,7 @@ package repo
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"oafse/internal/domain/model"
 )
@@ -19,16 +20,16 @@ func NewCrawlRepo(URLRepoCache *URLRepoCache, pageRepoDB *PageRepoDB) *CrawlRepo
 	}
 }
 
-func (r *CrawlRepo) TakeOn(ctx context.Context, workerID int) (*model.URL, error) {
+func (r *CrawlRepo) TakeOn(ctx context.Context, workerID string) (*model.URL, error) {
 	return r.urlRepoCache.TakeOn(ctx, workerID)
 }
 
-func (r *CrawlRepo) PushURLs(ctx context.Context, urls []*model.URL) ([]*model.URL, error) {
+func (r *CrawlRepo) PushURLs(ctx context.Context, urls []string) ([]string, error) {
 	return r.urlRepoCache.PushURLs(ctx, urls)
 }
 
-func (r *CrawlRepo) Retry(ctx context.Context, url *model.URL) error {
-	return r.urlRepoCache.Retry(ctx, url)
+func (r *CrawlRepo) RetryURL(ctx context.Context, url string, retryAt time.Time) error {
+	return r.urlRepoCache.RetryURL(ctx, url, retryAt)
 }
 
 func (r *CrawlRepo) Done(ctx context.Context, page *model.Page) error {

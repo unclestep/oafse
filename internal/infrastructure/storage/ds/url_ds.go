@@ -2,14 +2,15 @@ package ds
 
 import (
 	"context"
+	"time"
 
 	"oafse/internal/infrastructure/storage/model"
 )
 
 type URLCacheDS interface {
-	TakeOn(ctx context.Context, workerID int) (*model.URLCache, error)
-	PushURLs(ctx context.Context, urls []*model.URLCache) ([]*model.URLCache, error)
-	Retry(ctx context.Context, url *model.URLCache) error
+	TakeOn(ctx context.Context, workerID string) (*model.URLCache, error)
+	PushURLs(ctx context.Context, urls []string) ([]string, error)
+	RetryURL(ctx context.Context, url string, retryAt time.Time) error
 	Done(ctx context.Context, url string) error
-	GetCrawlMeta(ctx context.Context) *model.CrawlMetadata
+	GetCrawlMetadata(ctx context.Context) *model.CrawlMetadata
 }

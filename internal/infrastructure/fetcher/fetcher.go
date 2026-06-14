@@ -75,7 +75,7 @@ func (f *Fetcher) Fetch(parent context.Context, u *model.URL) (*port.FetchData, 
 	if fetchStatus := port.ClassifyStatus(resp.StatusCode); fetchStatus != port.FetchOK {
 		return &port.FetchData{
 			Status: fetchStatus,
-		}, port.ErrStatusCodeNotOK
+		}, nil
 	}
 
 	reader := bufio.NewReader(resp.Body)

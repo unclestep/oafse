@@ -6,11 +6,12 @@ import (
 	"oafse/internal/domain/model"
 )
 
-type ParseConfig struct {
-	TryLim          int
-	TryBaseInterval time.Duration
+type CrawlConfig struct {
+	TryLim                    int
+	TryBaseInterval           time.Duration
+	HealthCheckWorryThreshold time.Duration
 }
 
 type Processing interface {
-	DecideRetry(url *model.URL, conf *ParseConfig) bool
+	DecideRetry(url *model.URL, conf *CrawlConfig) bool
 }
