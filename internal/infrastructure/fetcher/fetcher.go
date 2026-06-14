@@ -50,7 +50,7 @@ func isSPA(htmlBytes []byte) bool {
 	return false
 }
 
-func (f *Fetcher) Fetch(parent context.Context, u *model.URL) (*port.FetchResult, error) {
+func (f *Fetcher) Fetch(parent context.Context, u *model.URL) (*port.FetchData, error) {
 	wrap := func(err error) error {
 		return fmt.Errorf("fetch: %w", err)
 	}
@@ -73,7 +73,7 @@ func (f *Fetcher) Fetch(parent context.Context, u *model.URL) (*port.FetchResult
 	}()
 
 	if fetchStatus := port.ClassifyStatus(resp.StatusCode); fetchStatus != port.FetchOK {
-		return &port.FetchResult{
+		return &port.FetchData{
 			Status: fetchStatus,
 		}, port.ErrStatusCodeNotOK
 	}
@@ -127,14 +127,16 @@ func (f *Fetcher) Fetch(parent context.Context, u *model.URL) (*port.FetchResult
 		if err != nil {
 			return nil, wrap(err)
 		}
-		return &port.FetchResult{
+		return &port.FetchData{
+			URL:         u,
 			Status:      port.FetchOK,
 			ContentType: contentType,
 			Raw:         []byte(res),
 		}, nil
 	}
 
-	return &port.FetchResult{
+	return &port.FetchData{
+		URL:         u,
 		Status:      port.FetchOK,
 		ContentType: contentType,
 		Raw:         pageContent,

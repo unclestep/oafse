@@ -24,6 +24,13 @@ func newFetcher(t *testing.T) *fetcher.Fetcher {
 	return fetcher.NewFetcher(client)
 }
 
+func newURL(t *testing.T, u string) *model.URL {
+	t.Helper()
+	url, err := model.NewURL(u)
+	require.NoError(t, err)
+	return url
+}
+
 func TestFetcherHTML(t *testing.T) {
 	htmlResponse := `
 		<!DOCTYPE html>
@@ -45,7 +52,7 @@ func TestFetcherHTML(t *testing.T) {
 		defer ts.Close()
 
 		fetcher := newFetcher(t)
-		res, err := fetcher.Fetch(context.Background(), model.NewURL(ts.URL))
+		res, err := fetcher.Fetch(context.Background(), newURL(t, ts.URL))
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(htmlResponse), strings.TrimSpace(string(res.Raw)))
 		assert.Contains(t, "text/html", res.ContentType)
@@ -62,7 +69,7 @@ func TestFetcherHTML(t *testing.T) {
 		defer ts.Close()
 
 		fetcher := newFetcher(t)
-		res, err := fetcher.Fetch(context.Background(), model.NewURL(ts.URL))
+		res, err := fetcher.Fetch(context.Background(), newURL(t, ts.URL))
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(htmlResponse), strings.TrimSpace(string(res.Raw)))
 		assert.Contains(t, "text/html", res.ContentType)
@@ -80,7 +87,7 @@ func TestFetcherHTML(t *testing.T) {
 		defer ts.Close()
 
 		fetcher := newFetcher(t)
-		res, err := fetcher.Fetch(context.Background(), model.NewURL(ts.URL))
+		res, err := fetcher.Fetch(context.Background(), newURL(t, ts.URL))
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(htmlResponse), strings.TrimSpace(string(res.Raw)))
 		assert.Contains(t, "text/html", res.ContentType)
@@ -104,7 +111,7 @@ func TestFetcherPlain(t *testing.T) {
 		defer ts.Close()
 
 		fetcher := newFetcher(t)
-		res, err := fetcher.Fetch(context.Background(), model.NewURL(ts.URL))
+		res, err := fetcher.Fetch(context.Background(), newURL(t, ts.URL))
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(plainResponse), strings.TrimSpace(string(res.Raw)))
 		assert.Contains(t, "text/plain", res.ContentType)
@@ -121,7 +128,7 @@ func TestFetcherPlain(t *testing.T) {
 		defer ts.Close()
 
 		fetcher := newFetcher(t)
-		res, err := fetcher.Fetch(context.Background(), model.NewURL(ts.URL))
+		res, err := fetcher.Fetch(context.Background(), newURL(t, ts.URL))
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(plainResponse), strings.TrimSpace(string(res.Raw)))
 		assert.Contains(t, "text/plain", res.ContentType)
@@ -139,7 +146,7 @@ func TestFetcherPlain(t *testing.T) {
 		defer ts.Close()
 
 		fetcher := newFetcher(t)
-		res, err := fetcher.Fetch(context.Background(), model.NewURL(ts.URL))
+		res, err := fetcher.Fetch(context.Background(), newURL(t, ts.URL))
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(plainResponse), strings.TrimSpace(string(res.Raw)))
 		assert.Contains(t, "text/plain", res.ContentType)
@@ -160,7 +167,7 @@ func TestFetcherStatusNotOK(t *testing.T) {
 	defer ts.Close()
 
 	fetcher := newFetcher(t)
-	_, err := fetcher.Fetch(context.Background(), model.NewURL(ts.URL))
+	_, err := fetcher.Fetch(context.Background(), newURL(t, ts.URL))
 	require.Error(t, err)
 }
 
@@ -226,7 +233,7 @@ func TestFetcherSPA(t *testing.T) {
 			defer ts.Close()
 
 			f := newFetcher(t)
-			res, err := f.Fetch(context.Background(), model.NewURL(ts.URL))
+			res, err := f.Fetch(context.Background(), newURL(t, ts.URL))
 			require.NoError(t, err)
 			assert.Contains(t, res.ContentType, "text/html")
 			assert.NotEmpty(t, res.Raw)
@@ -258,7 +265,7 @@ func TestFetcherSPANextJSHeader(t *testing.T) {
 	defer ts.Close()
 
 	f := newFetcher(t)
-	res, err := f.Fetch(context.Background(), model.NewURL(ts.URL))
+	res, err := f.Fetch(context.Background(), newURL(t, ts.URL))
 	require.NoError(t, err)
 	assert.Contains(t, res.ContentType, "text/html")
 	assert.NotEmpty(t, res.Raw)

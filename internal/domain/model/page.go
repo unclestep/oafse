@@ -4,8 +4,8 @@ type Page struct {
 	URL         *URL
 	Title       string
 	Description string
-	Refs        []*URL
-	Content     []byte
+	Content     string
+	Links       []*URL
 }
 
 func NewPage(url *URL) *Page {

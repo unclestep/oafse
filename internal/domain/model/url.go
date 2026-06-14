@@ -7,8 +7,8 @@ import (
 )
 
 type URL struct {
-	norm     string
-	host     string
+	*url.URL
+
 	Status   CrawlStatus
 	Try      int
 	TakeOnAt time.Time
@@ -38,37 +38,55 @@ func (p CrawlStatus) String() string {
 		return "Retry"
 	case ManualCrawlStatus:
 		return "Manual"
+	case GiveUpCrawlStatus:
+		return "GiveUP"
 	default:
 		return "Unknown"
 	}
 }
 
-func NewURL(raw string) *URL {
-	parsed, err := url.Parse(raw)
-	if err != nil {
-		panic(fmt.Sprintf("new url: %s", err))
+func NewURLFromParsed(u *url.URL) (*URL, error) {
+	if u.Scheme == "" || u.Host == "" {
+		return nil, fmt.Errorf("new url from parsed: not an absolute URL: %s", u.String())
 	}
 
-	parsed.User = nil
-	parsed.Fragment = ""
-	parsed.RawFragment = ""
-	parsed.RawQuery = ""
-	parsed.ForceQuery = false
+	norm := Normalize(u)
 
 	return &URL{
-		norm: parsed.String(),
-		host: parsed.Hostname(),
-	}
+		URL: norm,
+	}, nil
 }
 
-func (u *URL) String() string {
-	return u.norm
+func NewURL(raw string) (*URL, error) {
+	unnorm, err := url.Parse(raw)
+	if err != nil {
+		return nil, fmt.Errorf("new url: %w", err)
+	}
+
+	norm := Normalize(unnorm)
+
+	return &URL{
+		URL: norm,
+	}, nil
+}
+
+func Normalize(unnorm *url.URL) *url.URL {
+	norm := *unnorm
+	norm.User = nil
+	norm.Fragment = ""
+	norm.RawFragment = ""
+	norm.RawQuery = ""
+	norm.ForceQuery = false
+	if norm.Path == "/" {
+		norm.Path = ""
+	}
+	return &norm
 }
 
 func (u *URL) IsSameDomain(other *URL) bool {
-	return u.host == other.host
+	return u.Hostname() == other.Hostname()
 }
 
 func (u *URL) Equals(other *URL) bool {
-	return u.norm == other.norm
+	return u.String() == other.String()
 }

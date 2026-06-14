@@ -13,10 +13,11 @@ var (
 )
 
 type Fetcher interface {
-	Fetch(ctx context.Context, u *model.URL) (*FetchResult, error)
+	Fetch(ctx context.Context, u *model.URL) (*FetchData, error)
 }
 
-type FetchResult struct {
+type FetchData struct {
+	URL         *model.URL
 	Status      FetchStatus
 	ContentType string
 	Raw         []byte
@@ -25,7 +26,7 @@ type FetchResult struct {
 type FetchStatus int
 
 const (
-	FetchImpossible FetchStatus = iota // 200 (body is not HTML), 301, 308, 403, 404, 410, 501 and others
+	FetchImpossible FetchStatus = iota // 301, 308, 403, 404, 410, 501 and others
 	FetchOK                            // 200, body is HTML
 	FetchRetry                         // 408, 429, 500, 502, 503, 504
 	FetchManual                        // 400, 401, 411

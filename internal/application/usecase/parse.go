@@ -40,15 +40,20 @@ func (p *Parse) Execute(ctx context.Context) (*model.URL, error) {
 		return nil, wrap(err)
 	}
 
-	res, err := p.fetcher.Fetch(ctx, url)
+	fd, err := p.fetcher.Fetch(ctx, url)
 	if err != nil {
 		return nil, wrap(err)
 	}
 
 	retry := p.proc.DecideRetry(url, p.cfg)
-	if retry || res.Status == port.FetchRetry {
+	if retry || fd.Status == port.FetchRetry {
 		p.repo.Retry(ctx, url)
 		return url, nil
+	}
+
+	page, err := p.extractor.Extract(fd)
+	if err != nil {
+		return nil, wrap(err)
 	}
 
 	return url, nil
