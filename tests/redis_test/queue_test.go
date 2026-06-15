@@ -2,12 +2,14 @@ package redis_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"oafse/internal/application/port"
 	sredis "oafse/internal/infrastructure/storage/redis"
 )
 
@@ -94,7 +96,7 @@ func (s *RedisSuite) TestQueuePushURLsConcurrent() {
 	s.checkQueue(len(urls)*3, len(urls)*3)
 }
 
-func (s *RedisSuite) TestPopURLConcurrent() {
+func (s *RedisSuite) TestTakeOnConcurrent() {
 	urls := s.pushURLs()
 	total := len(urls) * len(urls[0])
 
@@ -106,22 +108,22 @@ func (s *RedisSuite) TestPopURLConcurrent() {
 			defer wg.Done()
 			workerID := fmt.Sprint(rand.Int31n(int32(WorkersCount)))
 			for {
-				url, err := s.curator.PopURL(context.Background(), workerID)
+				cache, err := s.curator.TakeOn(context.Background(), workerID)
+				if errors.Is(err, port.ErrQueueEmpty) {
+					break
+				}
 				if !s.NoError(err) {
 					return
 				}
-				if url == "" {
-					break
-				}
 
-				info, err := s.curator.GetURLInfo(context.Background(), url)
+				info, err := s.curator.GetURLInfo(context.Background(), cache.URL)
 				if !s.NoError(err) {
 					return
 				}
 
 				s.Equal(sredis.StatusProcessing, info.Status, "Workers Processing Queue")
 				s.Equal(workerID, info.WorkerID, "Workers ID")
-				s.Greater(info.ProcessingStartTime, time.Now().UnixMilli()-time.Minute.Milliseconds(), "Processing Start Time")
+				s.Greater(info.TakeOnAt, time.Now().UnixMilli()-time.Minute.Milliseconds(), "Processing Start Time")
 			}
 		}()
 	}

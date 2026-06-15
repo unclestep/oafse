@@ -34,7 +34,7 @@ func (s *RedisSuite) TestEnqueueURLsBasic() {
 		return
 	}
 	s.Equal(sredis.StatusQueue, info.Status)
-	s.Equal(1, info.Tries)
+	s.Equal(1, info.Try)
 
 	info2, err := s.curator.GetURLInfo(context.Background(), "URL2")
 	s.NoError(err)

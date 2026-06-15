@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"oafse/internal/application/port"
 	"oafse/internal/domain/model"
 	"oafse/internal/infrastructure/fetcher"
 
@@ -154,21 +155,40 @@ func TestFetcherPlain(t *testing.T) {
 }
 
 func TestFetcherStatusNotOK(t *testing.T) {
-	plainResponse := `Not OK`
+	// Non-200 responses are not errors — the fetcher returns FetchData with a
+	// classified status so the use case can decide retry vs give-up.
+	tests := []struct {
+		name       string
+		statusCode int
+		wantStatus port.FetchStatus
+	}{
+		{"Permanent Redirect 308", http.StatusPermanentRedirect, port.FetchImpossible},
+		{"Not Found 404", http.StatusNotFound, port.FetchImpossible},
+		{"Gone 410", http.StatusGone, port.FetchImpossible},
+		{"Forbidden 403", http.StatusForbidden, port.FetchImpossible},
+		{"Internal Server Error 500", http.StatusInternalServerError, port.FetchRetry},
+		{"Bad Gateway 502", http.StatusBadGateway, port.FetchRetry},
+		{"Service Unavailable 503", http.StatusServiceUnavailable, port.FetchRetry},
+		{"Too Many Requests 429", http.StatusTooManyRequests, port.FetchRetry},
+		{"Bad Request 400", http.StatusBadRequest, port.FetchManual},
+		{"Unauthorized 401", http.StatusUnauthorized, port.FetchManual},
+	}
 
-	ts := httptest.NewServer(
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "text/plain")
-			w.WriteHeader(http.StatusPermanentRedirect)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.statusCode)
+			}))
+			defer ts.Close()
 
-			w.Write([]byte(plainResponse))
-		}),
-	)
-	defer ts.Close()
-
-	fetcher := newFetcher(t)
-	_, err := fetcher.Fetch(context.Background(), newURL(t, ts.URL))
-	require.Error(t, err)
+			f := newFetcher(t)
+			res, err := f.Fetch(context.Background(), newURL(t, ts.URL))
+			require.NoError(t, err, "non-200 status must not produce a Go error")
+			require.NotNil(t, res)
+			assert.Equal(t, tc.wantStatus, res.Status)
+			assert.Empty(t, res.Raw, "body must not be read for non-200 responses")
+		})
+	}
 }
 
 func TestFetcherSPA(t *testing.T) {

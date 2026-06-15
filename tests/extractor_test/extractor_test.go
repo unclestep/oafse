@@ -1,6 +1,7 @@
 package extractor_test
 
 import (
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -18,15 +19,7 @@ func mustURL(t *testing.T, raw string) *model.URL {
 	return u
 }
 
-func linkNorms(links []*model.URL) []string {
-	norms := make([]string, len(links))
-	for i, l := range links {
-		norms[i] = l.String()
-	}
-	return norms
-}
-
-func TestExtractor_Extract(t *testing.T) {
+func TestExtractorExtract(t *testing.T) {
 	e := extractor.NewExtractor()
 	base := mustURL(t, "https://example.com")
 
@@ -66,11 +59,11 @@ func TestExtractor_Extract(t *testing.T) {
 
 		assert.Equal(t, "Go Programming Language", page.Title)
 		assert.NotEmpty(t, page.Content)
+		assert.NotEmpty(t, page.Description)
 
-		norms := linkNorms(page.Links)
 		require.Len(t, page.Links, 2, "only same-domain links expected")
-		assert.Contains(t, norms, "https://example.com/articles/concurrency")
-		assert.Contains(t, norms, "https://example.com/articles/interfaces")
+		assert.Contains(t, page.Links, "https://example.com/articles/concurrency")
+		assert.Contains(t, page.Links, "https://example.com/articles/interfaces")
 	})
 
 	t.Run("LeafNode", func(t *testing.T) {
@@ -98,6 +91,8 @@ func TestExtractor_Extract(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, page)
 
+		assert.Equal(t, "Terminal Page", page.Title)
+		assert.NotEmpty(t, page.Content)
 		assert.Empty(t, page.Links)
 	})
 
@@ -129,17 +124,23 @@ func TestExtractor_Extract(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, page)
 
+		assert.NotEmpty(t, page.Content)
 		for _, l := range page.Links {
-			assert.Equal(t, base.Hostname(), l.Hostname())
+			u, err := url.Parse(l)
+			require.NoError(t, err)
+			assert.Equal(t, base.Hostname(), u.Hostname(), "only same-domain links: %s", l)
 		}
 	})
 
-	t.Run("NonHTML", func(t *testing.T) {
-		raw := []byte(`Web crawlers systematically browse the web to discover and index content.
-They start from a set of seed URLs and recursively follow discovered links.
-Key design decisions include respecting robots.txt, rate limiting, URL deduplication,
-and domain scoping. The crawl frontier is managed via a queue data structure while
-visited URLs are tracked in a set to prevent revisiting the same resource twice.`)
+	t.Run("PlainText", func(t *testing.T) {
+		raw := []byte(`
+		Web crawlers systematically browse the web to discover and index content.
+		They start from a set of seed URLs and recursively follow discovered links.
+		Key design decisions include respecting robots.txt, rate limiting, URL deduplication,
+		and domain scoping. The crawl frontier is managed via a queue data structure while
+		visited URLs are tracked in a set to prevent revisiting the same resource twice.
+		Modern crawlers must also handle JavaScript-rendered content, dynamic pagination,
+		and anti-bot measures. Politeness policies ensure crawlers do not overload servers.`)
 
 		page, err := e.Extract(&port.FetchData{
 			URL:         base,
@@ -147,8 +148,47 @@ visited URLs are tracked in a set to prevent revisiting the same resource twice.
 			ContentType: "text/plain",
 			Raw:         raw,
 		})
-		require.Error(t, err)
-		require.NotNil(t, page)
-		assert.Empty(t, page.Links, "plain text has no anchor elements")
+
+		require.Error(t, err, "readability cannot find article content in plain text")
+		assert.Nil(t, page)
+	})
+
+	t.Run("Markdown", func(t *testing.T) {
+		raw := []byte(`
+		# Web Crawlers
+
+		Web crawlers systematically browse the internet to discover and index pages.
+		They begin from seed URLs and recursively follow hyperlinks found in each document.
+
+		## Architecture
+
+		A typical crawler consists of several components working in concert:
+
+		- **Fetcher** — downloads page content via HTTP
+		- **Extractor** — parses HTML and extracts outgoing links
+		- **Queue** — manages the crawl frontier (URLs pending visit)
+		- **Store** — persists crawled pages and discovered links
+
+		## Considerations
+
+		Key design decisions include [rate limiting](/docs/rate-limiting) and
+		[robots.txt compliance](/docs/robots). External links such as
+		[Go documentation](https://golang.org/doc) are discovered but may be
+		out of scope depending on the crawl domain policy.
+
+		Politeness policies ensure crawlers do not overload target servers with
+		excessive request rates or concurrent connections.`)
+
+		page, err := e.Extract(&port.FetchData{
+			URL:         base,
+			Status:      port.FetchOK,
+			ContentType: "text/markdown",
+			Raw:         raw,
+		})
+
+		// Markdown [text](url) syntax produces no <a> elements via html.Parse,
+		// so even if parsing succeeded, no links would be extracted.
+		require.Error(t, err, "readability cannot find article content in raw markdown")
+		assert.Nil(t, page)
 	})
 }

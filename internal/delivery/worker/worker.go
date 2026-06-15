@@ -47,7 +47,7 @@ func (p *WorkerPool) Run(ctx context.Context) {
 		})
 	}
 	p.wg.Wait()
-} 
+}
 
 func (w *Worker) run(parent context.Context) {
 	for {
@@ -85,5 +85,3 @@ func (w *Worker) run(parent context.Context) {
 		}
 	}
 }
-
-

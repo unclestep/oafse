@@ -3,6 +3,9 @@ module oafse
 go 1.26.2
 
 require (
+	codeberg.org/readeck/go-readability/v2 v2.1.1
+	github.com/chromedp/cdproto v0.0.0-20260321001828-e3e3800016bc
+	github.com/chromedp/chromedp v0.15.1
 	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/jackc/pgx/v5 v5.5.4
 	github.com/redis/go-redis/v9 v9.20.0
@@ -10,10 +13,11 @@ require (
 	github.com/testcontainers/testcontainers-go v0.42.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.42.0
 	github.com/testcontainers/testcontainers-go/modules/redis v0.42.0
+	go.uber.org/fx v1.24.0
+	golang.org/x/net v0.56.0
 )
 
 require (
-	codeberg.org/readeck/go-readability/v2 v2.1.1 // indirect
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
@@ -21,8 +25,6 @@ require (
 	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/chromedp/cdproto v0.0.0-20260321001828-e3e3800016bc // indirect
-	github.com/chromedp/chromedp v0.15.1 // indirect
 	github.com/chromedp/sysutil v1.1.0 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
@@ -78,11 +80,9 @@ require (
 	go.opentelemetry.io/otel/trace v1.41.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/dig v1.19.0 // indirect
-	go.uber.org/fx v1.24.0 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
 	go.uber.org/zap v1.26.0 // indirect
 	golang.org/x/crypto v0.53.0 // indirect
-	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/text v0.38.0 // indirect

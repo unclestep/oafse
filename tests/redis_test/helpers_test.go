@@ -2,9 +2,11 @@ package redis_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
+	"oafse/internal/application/port"
 	sredis "oafse/internal/infrastructure/storage/redis"
 )
 
@@ -51,16 +53,14 @@ func (s *RedisSuite) prepareProcessingQueue(urls [][]string) {
 
 		var allPopped []string
 		for {
-			popped, err := s.curator.PopURL(context.Background(), fmt.Sprint(i))
+			cache, err := s.curator.TakeOn(context.Background(), fmt.Sprint(i))
+			if errors.Is(err, port.ErrQueueEmpty) {
+				break
+			}
 			if !s.NoError(err) {
 				return
 			}
-
-			if popped == "" {
-				break
-			}
-
-			allPopped = append(allPopped, popped)
+			allPopped = append(allPopped, cache.URL)
 		}
 
 		s.ElementsMatch(group, allPopped)

@@ -2,11 +2,13 @@ package redis_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"sync"
 	"time"
 
+	"oafse/internal/application/port"
 	sredis "oafse/internal/infrastructure/storage/redis"
 )
 
@@ -55,8 +57,8 @@ func (s *RedisSuite) TestRetryURL() {
 		}
 
 		s.Equal(sredis.StatusRetry, info.Status)
-		s.Equal(1, info.Tries)
-		s.Equal(retryTime.UnixMilli(), info.NextRetryTime)
+		s.Equal(1, info.Try)
+		s.Equal(retryTime.UnixMilli(), info.RetryAt)
 
 		score, err := s.rdb.ZScore(context.Background(), sredis.KeyRetry, "URL").Result()
 		s.NoError(err)
@@ -76,22 +78,22 @@ func (s *RedisSuite) TestRetryURLConcurrent() {
 			defer wg.Done()
 			workerID := fmt.Sprint(rand.Int31n(int32(WorkersCount)))
 			for {
-				url, err := s.curator.PopURL(context.Background(), workerID)
+				cache, err := s.curator.TakeOn(context.Background(), workerID)
+				if errors.Is(err, port.ErrQueueEmpty) {
+					break
+				}
 				if !s.NoError(err) {
 					return
 				}
-				if url == "" {
-					break
-				}
 
-				info, err := s.curator.GetURLInfo(context.Background(), url)
+				info, err := s.curator.GetURLInfo(context.Background(), cache.URL)
 				if !s.NoError(err) {
 					return
 				}
 
 				s.Equal(sredis.StatusProcessing, info.Status, "URL Status")
 				s.Equal(workerID, info.WorkerID, "Worker ID")
-				s.Greater(info.ProcessingStartTime, time.Now().UnixMilli()-time.Minute.Milliseconds(), "Processing Start Time")
+				s.Greater(info.TakeOnAt, time.Now().UnixMilli()-time.Minute.Milliseconds(), "Processing Start Time")
 			}
 		}()
 	}
@@ -115,8 +117,8 @@ func (s *RedisSuite) TestRetryURLConcurrent() {
 				}
 
 				s.Equal(sredis.StatusRetry, info.Status)
-				s.Equal(1, info.Tries)
-				s.Equal(retryTime.UnixMilli(), info.NextRetryTime)
+				s.Equal(1, info.Try)
+				s.Equal(retryTime.UnixMilli(), info.RetryAt)
 			}
 		}()
 	}
@@ -187,7 +189,7 @@ func (s *RedisSuite) TestRecoverSuite() {
 		s.NoError(err)
 		s.Equal(sredis.StatusQueue, info.Status)
 		s.Equal("", info.WorkerID)
-		s.Equal(0, info.Tries)
+		s.Equal(0, info.Try)
 
 		queueLen, err := s.rdb.LLen(context.Background(), sredis.KeyQueue).Result()
 		s.NoError(err)
