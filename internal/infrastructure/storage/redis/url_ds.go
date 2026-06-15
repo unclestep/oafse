@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"oafse/internal/application/port"
+	domainModel "oafse/internal/domain/model"
 	"oafse/internal/infrastructure/storage/model"
 
 	"github.com/redis/go-redis/v9"
@@ -67,7 +67,7 @@ func (s *URLDS) Start(ctx context.Context, url string) error {
 	return nil
 }
 
-func (s *URLDS) StartHealthChecking(ctx context.Context, cfg *port.CrawlConfig) {
+func (s *URLDS) StartHealthChecking(ctx context.Context, cfg *domainModel.CrawlConfig) {
 	go func(worryThreshold time.Duration) {
 		for {
 			time.Sleep(worryThreshold)

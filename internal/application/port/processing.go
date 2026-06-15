@@ -7,5 +7,5 @@ import (
 )
 
 type Processing interface {
-	DecideRetry(url *model.URL, conf *CrawlConfig) (bool, time.Time)
+	DecideRetry(url *model.URL, conf *model.CrawlConfig) (bool, time.Time)
 }

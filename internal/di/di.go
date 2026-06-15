@@ -9,6 +9,7 @@ import (
 	"oafse/internal/application/port"
 	"oafse/internal/application/usecase"
 	"oafse/internal/delivery/worker"
+	"oafse/internal/domain/model"
 	"oafse/internal/domain/service"
 	"oafse/internal/infrastructure/extractor"
 	"oafse/internal/infrastructure/fetcher"
@@ -25,8 +26,8 @@ import (
 func NewCrawler(startURL string) fx.Option {
 	return fx.Module(
 		"crawler",
-		fx.Provide(func() *port.CrawlConfig {
-			return &port.CrawlConfig{
+		fx.Provide(func() *model.CrawlConfig {
+			return &model.CrawlConfig{
 				StartURL:                  startURL,
 				WorkersCount:              20,
 				TryLim:                    5,
@@ -41,7 +42,7 @@ func NewCrawler(startURL string) fx.Option {
 		dsMod,
 		appMod,
 		workerMod,
-		fx.Invoke(func(lc fx.Lifecycle, repo port.CrawlRepo, cfg *port.CrawlConfig) {
+		fx.Invoke(func(lc fx.Lifecycle, repo port.CrawlRepo, cfg *model.CrawlConfig) {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
 					repo.StartHealthChecking(context.Background(), cfg)
@@ -117,7 +118,7 @@ var dsMod = fx.Module(
 		return redisStorage.NewClient(os.Getenv("REDIS_DSN"))
 	}),
 	fx.Provide(redisStorage.NewQueue),
-	fx.Provide(func(rdb *goredis.Client, cfg *port.CrawlConfig) *redisStorage.Processing {
+	fx.Provide(func(rdb *goredis.Client, cfg *model.CrawlConfig) *redisStorage.Processing {
 		return redisStorage.NewProcessing(rdb, cfg.WorkersCount)
 	}),
 	fx.Provide(redisStorage.NewRetry),

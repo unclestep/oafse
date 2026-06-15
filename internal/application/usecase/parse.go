@@ -13,14 +13,14 @@ import (
 )
 
 type Parse struct {
-	cfg       *port.CrawlConfig
+	cfg       *model.CrawlConfig
 	repo      port.CrawlRepo
 	fetcher   port.Fetcher
 	proc      port.Processing
 	extractor port.Extractor
 }
 
-func NewParse(cfg *port.CrawlConfig, repo port.CrawlRepo, proc port.Processing, fetcher port.Fetcher, extractor port.Extractor) *Parse {
+func NewParse(cfg *model.CrawlConfig, repo port.CrawlRepo, proc port.Processing, fetcher port.Fetcher, extractor port.Extractor) *Parse {
 	return &Parse{
 		cfg:       cfg,
 		repo:      repo,

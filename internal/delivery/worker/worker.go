@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"oafse/internal/application/port"
+	"oafse/internal/domain/model"
 )
 
 type Worker struct {
@@ -26,7 +27,7 @@ type WorkerPool struct {
 	workers []*Worker
 }
 
-func NewWorkerPool(cfg *port.CrawlConfig, parse port.ParseUseCase) *WorkerPool {
+func NewWorkerPool(cfg *model.CrawlConfig, parse port.ParseUseCase) *WorkerPool {
 	workers := make([]*Worker, cfg.WorkersCount)
 	for i := range cfg.WorkersCount {
 		workers[i] = NewWorker(strconv.Itoa(i), parse)

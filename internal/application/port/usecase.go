@@ -5,14 +5,6 @@ import (
 	"time"
 )
 
-type CrawlConfig struct {
-	StartURL                  string
-	WorkersCount              int
-	TryLim                    int
-	TryBaseInterval           time.Duration
-	HealthCheckWorryThreshold time.Duration
-}
-
 type ParseUseCase interface {
 	Execute(ctx context.Context, workerID string) (*ParseCmd, error)
 }

@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"oafse/internal/application/port"
-	domain "oafse/internal/domain/model"
+	domainModel "oafse/internal/domain/model"
 	"oafse/internal/infrastructure/storage/ds"
 	"oafse/internal/infrastructure/storage/mapper"
 )
@@ -25,11 +25,11 @@ func (r *URLRepoCache) Start(ctx context.Context, url string) error {
 	return r.s.Start(ctx, url)
 }
 
-func (r *URLRepoCache) StartHealthChecking(ctx context.Context, cfg *port.CrawlConfig) {
+func (r *URLRepoCache) StartHealthChecking(ctx context.Context, cfg *domainModel.CrawlConfig) {
 	r.s.StartHealthChecking(ctx, cfg)
 }
 
-func (r *URLRepoCache) TakeOn(ctx context.Context, workerID string) (*domain.URL, error) {
+func (r *URLRepoCache) TakeOn(ctx context.Context, workerID string) (*domainModel.URL, error) {
 	wrap := func(err error) error {
 		return fmt.Errorf("take on: %w", err)
 	}

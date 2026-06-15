@@ -16,6 +16,7 @@ import (
 
 	"oafse/internal/application/port"
 	"oafse/internal/application/usecase"
+	"oafse/internal/domain/model"
 	"oafse/internal/domain/service"
 	"oafse/internal/infrastructure/extractor"
 	"oafse/internal/infrastructure/fetcher"
@@ -85,7 +86,7 @@ func (s *ParseSuite) TearDownTest() {
 }
 
 func (s *ParseSuite) newUseCase(client *http.Client) *usecase.Parse {
-	cfg := &port.CrawlConfig{
+	cfg := &model.CrawlConfig{
 		WorkersCount:              1,
 		TryLim:                    3,
 		TryBaseInterval:           100 * time.Millisecond,

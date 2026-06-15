@@ -4,7 +4,6 @@ import (
 	"math"
 	"time"
 
-	"oafse/internal/application/port"
 	"oafse/internal/domain/model"
 )
 
@@ -14,7 +13,7 @@ func NewProcessing() *Processing {
 	return &Processing{}
 }
 
-func (s *Processing) DecideRetry(url *model.URL, conf *port.CrawlConfig) (bool, time.Time) {
+func (s *Processing) DecideRetry(url *model.URL, conf *model.CrawlConfig) (bool, time.Time) {
 	if conf.TryLim != -1 && url.Try >= conf.TryLim-1 {
 		return false, time.Time{}
 	}

@@ -25,7 +25,7 @@ func (r *CrawlRepo) Start(ctx context.Context, url string) error {
 	return r.urlRepoCache.Start(ctx, url)
 }
 
-func (r *CrawlRepo) StartHealthChecking(ctx context.Context, cfg *port.CrawlConfig) {
+func (r *CrawlRepo) StartHealthChecking(ctx context.Context, cfg *model.CrawlConfig) {
 	r.urlRepoCache.StartHealthChecking(ctx, cfg)
 }
 
