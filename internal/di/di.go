@@ -50,10 +50,13 @@ func NewCrawler(startURL string) fx.Option {
 				},
 			})
 		}),
-		fx.Invoke(func(lc fx.Lifecycle, pool *worker.WorkerPool) {
+		fx.Invoke(func(lc fx.Lifecycle, pool *worker.WorkerPool, shutdowner fx.Shutdowner) {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
-					go pool.Run(context.Background())
+					go func() {
+						pool.Run(context.Background())
+						_ = shutdowner.Shutdown()
+					}()
 					return nil
 				},
 			})

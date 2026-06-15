@@ -134,7 +134,7 @@ var getCrawlMetadataScript = redis.NewScript(`
 		return {total, false}
 	end
 
-	local earliest = range[2]
+	local earliest = tonumber(range[2])
 
 	return {total, earliest}
 `)

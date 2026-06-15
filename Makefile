@@ -29,4 +29,9 @@ setup:
 test: setup
 	go test ./... -timeout 120s -short
 
-.PHONY: all setup test
+db-check:
+	@. ./.env && psql "$$POSTGRES_DSN" -c "SELECT url, title, crawled_at FROM pages ORDER BY crawled_at DESC LIMIT 20;" \
+	                -c "SELECT COUNT(*) AS total_pages FROM pages;" \
+	                -c "SELECT COUNT(*) AS total_links FROM links;"
+
+.PHONY: all setup test db-check

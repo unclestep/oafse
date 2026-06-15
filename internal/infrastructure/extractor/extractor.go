@@ -49,16 +49,22 @@ func (e *Extractor) Extract(fetchData *port.FetchData) (*model.Page, error) {
 		return nil, wrap(err)
 	}
 
-	var sb strings.Builder
-	if err := art.RenderText(&sb); err != nil {
-		return nil, wrap(err)
+	var title, description, content string
+	if art.Node != nil {
+		title = art.Title()
+		description = art.Excerpt()
+		var sb strings.Builder
+		if err := art.RenderText(&sb); err != nil {
+			return nil, wrap(err)
+		}
+		content = sb.String()
 	}
 
 	return &model.Page{
 		URL:         fetchData.URL.String(),
-		Title:       art.Title(),
-		Description: art.Excerpt(),
-		Content:     sb.String(),
+		Title:       title,
+		Description: description,
+		Content:     content,
 		CrawledAt:   time.Now(),
 		Links:       links,
 	}, nil

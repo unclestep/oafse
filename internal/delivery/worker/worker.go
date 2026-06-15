@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"log"
 	"strconv"
 	"sync"
 	"time"
@@ -47,6 +48,7 @@ func (p *WorkerPool) Run(ctx context.Context) {
 		})
 	}
 	p.wg.Wait()
+	log.Printf("[INFO] parsing is finished")
 }
 
 func (w *Worker) run(parent context.Context) {

@@ -153,8 +153,12 @@ func TestExtractorExtract(t *testing.T) {
 			Raw:         raw,
 		})
 
-		require.Error(t, err, "readability cannot find article content in plain text")
-		assert.Nil(t, page)
+		// readability cannot identify a content block in plain text — page is returned
+		// with empty content but no error; link discovery is unaffected.
+		require.NoError(t, err)
+		require.NotNil(t, page)
+		assert.Empty(t, page.Content)
+		assert.Empty(t, page.Links)
 	})
 
 	t.Run("Markdown", func(t *testing.T) {
@@ -191,8 +195,10 @@ func TestExtractorExtract(t *testing.T) {
 		})
 
 		// Markdown [text](url) syntax produces no <a> elements via html.Parse,
-		// so even if parsing succeeded, no links would be extracted.
-		require.Error(t, err, "readability cannot find article content in raw markdown")
-		assert.Nil(t, page)
+		// so no links are extracted. readability finds no content block — empty content.
+		require.NoError(t, err)
+		require.NotNil(t, page)
+		assert.Empty(t, page.Content)
+		assert.Empty(t, page.Links)
 	})
 }

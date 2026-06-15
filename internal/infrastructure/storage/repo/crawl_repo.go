@@ -49,12 +49,13 @@ func (r *CrawlRepo) Done(ctx context.Context, page *model.Page) error {
 	wrap := func(err error) error {
 		return fmt.Errorf("crawl repo: done: %w", err)
 	}
-	err := r.urlRepoCache.Done(ctx, page.URL)
-	if err != nil {
+	if err := r.urlRepoCache.Done(ctx, page.URL); err != nil {
 		return wrap(err)
 	}
-	err = r.pageRepoDB.SavePage(ctx, page)
-	if err != nil {
+	if err := r.pageRepoDB.SavePage(ctx, page); err != nil {
+		return wrap(err)
+	}
+	if _, err := r.urlRepoCache.PushURLs(ctx, page.Links); err != nil {
 		return wrap(err)
 	}
 	return nil

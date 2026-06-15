@@ -86,13 +86,15 @@ func (s *ParseSuite) TearDownTest() {
 }
 
 func (s *ParseSuite) newUseCase(client *http.Client) *usecase.Parse {
-	cfg := &model.CrawlConfig{
+	return s.newUseCaseWithConfig(client, &model.CrawlConfig{
 		WorkersCount:              1,
 		TryLim:                    3,
 		TryBaseInterval:           100 * time.Millisecond,
 		HealthCheckWorryThreshold: 15 * time.Second,
-	}
+	})
+}
 
+func (s *ParseSuite) newUseCaseWithConfig(client *http.Client, cfg *model.CrawlConfig) *usecase.Parse {
 	p := read.NewParser()
 	p.CharThresholds = 0
 	ext := extractor.NewExtractor(&p)
@@ -126,13 +128,22 @@ func (s *ParseSuite) TestExecuteParsesPageAndStoresResult() {
 		by researchers to analyse web structure, and by data pipelines to aggregate information
 		from multiple sources. They follow hyperlinks to discover new pages and store the
 		extracted content in a database for later retrieval and analysis.</p>
-		<a href="/about">About (internal)</a>
-		<a href="https://external.example.com">External (filtered)</a>
+		<a href="/about">About</a>
+		<a href="/topics">Topics</a>
+		<a href="/page/2">Page 2</a>
+		<a href="https://external.example.com">External site</a>
+		<a href="https://another-external.org/path">Another external</a>
 		</article>
 		</body>
 		</html>`))
 	}))
 	defer ts.Close()
+
+	internalLinks := []string{
+		ts.URL + "/about",
+		ts.URL + "/topics",
+		ts.URL + "/page/2",
+	}
 
 	ctx := context.Background()
 	s.Require().NoError(s.curator.Start(ctx, ts.URL))
@@ -141,23 +152,31 @@ func (s *ParseSuite) TestExecuteParsesPageAndStoresResult() {
 	s.Require().NoError(err)
 	s.Nil(cmd, "successful parse must return nil cmd")
 
-	// Redis: URL must be marked processed
+	// Redis: source URL must be marked processed
 	info, err := s.curator.GetURLInfo(ctx, ts.URL)
 	s.Require().NoError(err)
 	s.Equal(sredis.StatusProcessed, info.Status)
 
-	// Postgres: page must be saved with correct fields
-	ds := pg.NewPageDS(*s.pool)
-	page, err := ds.GetPage(ctx, ts.URL)
+	// Redis: each discovered internal link must be enqueued for crawling
+	for _, link := range internalLinks {
+		linkInfo, err := s.curator.GetURLInfo(ctx, link)
+		s.Require().NoError(err, "link %s must be present in Redis", link)
+		s.Equal(sredis.StatusQueue, linkInfo.Status, "link %s must have queue status", link)
+	}
+
+	// Postgres: page saved with correct metadata
+	pageDS := pg.NewPageDS(*s.pool)
+	page, err := pageDS.GetPage(ctx, ts.URL)
 	s.Require().NoError(err)
 	s.Equal(ts.URL, page.URL)
 	s.Equal("Web Crawlers", page.Title)
 	s.NotEmpty(page.Content)
-	s.Contains(page.Links, ts.URL+"/about")
-	s.NotContains(page.Links, "https://external.example.com")
+
+	// Postgres: links table contains exactly the internal links (extractor filters external)
+	s.ElementsMatch(internalLinks, page.Links)
 }
 
-func (s *ParseSuite) TestExecuteEmptyQueue_ReturnsStop() {
+func (s *ParseSuite) TestExecuteEmptyQueueReturnsStop() {
 	ctx := context.Background()
 	cmd, err := s.newUseCase(http.DefaultClient).Execute(ctx, "worker-0")
 	s.Require().NoError(err)
@@ -165,7 +184,7 @@ func (s *ParseSuite) TestExecuteEmptyQueue_ReturnsStop() {
 	s.Equal(port.DirectiveStop, cmd.Directive)
 }
 
-func (s *ParseSuite) TestExecuteServerError_RetriesURL() {
+func (s *ParseSuite) TestExecuteServerErrorRetriesURL() {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}))
@@ -200,6 +219,161 @@ func (s *ParseSuite) TestExecutePermanentErrorGivesUpURL() {
 	info, err := s.curator.GetURLInfo(ctx, ts.URL)
 	s.Require().NoError(err)
 	s.Equal(sredis.StatusFailure, info.Status)
+}
+
+func (s *ParseSuite) TestExecuteRetryLimitExceededGivesUpURL() {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer ts.Close()
+
+	// TryLim=2: first Execute retries (Try 0->1), second Execute gives up (Try 1 >= TryLim-1=1)
+	cfg := &model.CrawlConfig{
+		WorkersCount:              1,
+		TryLim:                    2,
+		TryBaseInterval:           50 * time.Millisecond,
+		HealthCheckWorryThreshold: 15 * time.Second,
+	}
+	uc := s.newUseCaseWithConfig(ts.Client(), cfg)
+
+	ctx := context.Background()
+	s.Require().NoError(s.curator.Start(ctx, ts.URL))
+
+	// First execute: URL gets scheduled for retry
+	cmd, err := uc.Execute(ctx, "worker-0")
+	s.Require().NoError(err)
+	s.Nil(cmd)
+
+	info, err := s.curator.GetURLInfo(ctx, ts.URL)
+	s.Require().NoError(err)
+	s.Equal(sredis.StatusRetry, info.Status)
+	s.Equal(1, info.Try)
+
+	// Wait for retry delay to pass: 50ms * 2^1 = 100ms
+	time.Sleep(150 * time.Millisecond)
+
+	// Second execute: retry limit hit -> GiveUp
+	cmd, err = uc.Execute(ctx, "worker-0")
+	s.Require().NoError(err)
+	s.Nil(cmd)
+
+	info, err = s.curator.GetURLInfo(ctx, ts.URL)
+	s.Require().NoError(err)
+	s.Equal(sredis.StatusFailure, info.Status)
+}
+
+func (s *ParseSuite) TestExecuteEmptyQueueWithProcessingReturnsSleep() {
+	ctx := context.Background()
+	s.Require().NoError(s.curator.Start(ctx, "http://example.com/page"))
+
+	// Simulate another worker holding the URL in processing state
+	_, err := s.curator.TakeOn(ctx, "other-worker")
+	s.Require().NoError(err)
+
+	// Queue is empty but there is a URL in processing -> DirectiveSleep
+	cmd, err := s.newUseCase(http.DefaultClient).Execute(ctx, "worker-0")
+	s.Require().NoError(err)
+	s.Require().NotNil(cmd)
+	s.Equal(port.DirectiveSleep, cmd.Directive)
+	s.Positive(cmd.SleepFor)
+}
+
+func (s *ParseSuite) TestExecuteEmptyQueueWithRetryReturnsSleep() {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer ts.Close()
+
+	ctx := context.Background()
+	s.Require().NoError(s.curator.Start(ctx, ts.URL))
+
+	uc := s.newUseCase(ts.Client())
+
+	// First execute: 503 -> URL moves to retry queue
+	cmd, err := uc.Execute(ctx, "worker-0")
+	s.Require().NoError(err)
+	s.Nil(cmd)
+
+	info, err := s.curator.GetURLInfo(ctx, ts.URL)
+	s.Require().NoError(err)
+	s.Equal(sredis.StatusRetry, info.Status)
+
+	// Immediate second execute: queue empty, retry not ready yet -> DirectiveSleep
+	// SleepFor reflects the time until EarliestRetry
+	cmd, err = uc.Execute(ctx, "worker-0")
+	s.Require().NoError(err)
+	s.Require().NotNil(cmd)
+	s.Equal(port.DirectiveSleep, cmd.Directive)
+	s.Positive(cmd.SleepFor)
+}
+
+func (s *ParseSuite) TestExecuteDuplicateLinksQueuedOnce() {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`
+		<!DOCTYPE html>
+		<html>
+		<head><title>Duplicates Test</title></head>
+		<body>
+		<p>A page about web crawling with repeated links.</p>
+		<a href="/about">About</a>
+		<a href="/about">About again</a>
+		<a href="/about">About third time</a>
+		</body>
+		</html>`))
+	}))
+	defer ts.Close()
+
+	ctx := context.Background()
+	s.Require().NoError(s.curator.Start(ctx, ts.URL))
+
+	cmd, err := s.newUseCase(ts.Client()).Execute(ctx, "worker-0")
+	s.Require().NoError(err)
+	s.Nil(cmd)
+
+	// /about must be enqueued exactly once despite appearing three times in HTML
+	linkInfo, err := s.curator.GetURLInfo(ctx, ts.URL+"/about")
+	s.Require().NoError(err)
+	s.Equal(sredis.StatusQueue, linkInfo.Status)
+
+	// Total Redis entries: root URL (processed) + /about (queued) = 2
+	count, err := s.rdb.HLen(ctx, sredis.KeyURLStatus).Result()
+	s.Require().NoError(err)
+	s.Equal(int64(2), count)
+}
+
+func (s *ParseSuite) TestExecuteExternalLinksNotQueued() {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`
+		<!DOCTYPE html>
+		<html>
+		<head><title>External Links Test</title></head>
+		<body>
+		<p>A page with only external links.</p>
+		<a href="https://external.example.com">External 1</a>
+		<a href="https://another-external.org/path">External 2</a>
+		</body>
+		</html>`))
+	}))
+	defer ts.Close()
+
+	ctx := context.Background()
+	s.Require().NoError(s.curator.Start(ctx, ts.URL))
+
+	cmd, err := s.newUseCase(ts.Client()).Execute(ctx, "worker-0")
+	s.Require().NoError(err)
+	s.Nil(cmd)
+
+	// Only the root URL must be tracked in Redis - no external URLs
+	count, err := s.rdb.HLen(ctx, sredis.KeyURLStatus).Result()
+	s.Require().NoError(err)
+	s.Equal(int64(1), count)
+
+	_, err = s.curator.GetURLInfo(ctx, "https://external.example.com")
+	s.Error(err, "external URL must be absent from Redis")
 }
 
 func TestParseSuite(t *testing.T) {
