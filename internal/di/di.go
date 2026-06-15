@@ -18,33 +18,47 @@ import (
 	"oafse/internal/infrastructure/storage/repo"
 
 	read "codeberg.org/readeck/go-readability/v2"
+	goredis "github.com/redis/go-redis/v9"
 	"go.uber.org/fx"
 )
 
-var Crawler = fx.Module(
-	"crawler",
-	fx.Provide(func() *port.CrawlConfig {
-		return &port.CrawlConfig{
-			WorkersCount:              20,
-			TryLim:                    5,
-			TryBaseInterval:           5 * time.Second,
-			HealthCheckWorryThreshold: 15 * time.Second,
-		}
-	}),
-	fetcherMod,
-	extractorMod,
-	domainMod,
-	repoMod,
-	dsMod,
-	appMod,
-	workerMod,
-	fx.Invoke(func(pool *worker.WorkerPool) {
-		pool.Run(context.Background())
-	}),
-	fx.Invoke(func(s *redisStorage.URLDS, cfg *port.CrawlConfig) {
-		s.StartHealthChecking(context.Background(), cfg)
-	}),
-)
+func NewCrawler(startURL string) fx.Option {
+	return fx.Module(
+		"crawler",
+		fx.Provide(func() *port.CrawlConfig {
+			return &port.CrawlConfig{
+				StartURL:                  startURL,
+				WorkersCount:              20,
+				TryLim:                    5,
+				TryBaseInterval:           5 * time.Second,
+				HealthCheckWorryThreshold: 15 * time.Second,
+			}
+		}),
+		fetcherMod,
+		extractorMod,
+		domainMod,
+		repoMod,
+		dsMod,
+		appMod,
+		workerMod,
+		fx.Invoke(func(lc fx.Lifecycle, repo port.CrawlRepo, cfg *port.CrawlConfig) {
+			lc.Append(fx.Hook{
+				OnStart: func(ctx context.Context) error {
+					repo.StartHealthChecking(context.Background(), cfg)
+					return repo.Start(ctx, cfg.StartURL)
+				},
+			})
+		}),
+		fx.Invoke(func(lc fx.Lifecycle, pool *worker.WorkerPool) {
+			lc.Append(fx.Hook{
+				OnStart: func(ctx context.Context) error {
+					go pool.Run(context.Background())
+					return nil
+				},
+			})
+		}),
+	)
+}
 
 var fetcherMod = fx.Module(
 	"fetcher",
@@ -99,11 +113,13 @@ var dsMod = fx.Module(
 		postgresStorage.NewPageDS,
 		fx.As(new(ds.PageDBDS)),
 	)),
-	fx.Provide(func() (*redis.Client, error) {
+	fx.Provide(func() (*goredis.Client, error) {
 		return redisStorage.NewClient(os.Getenv("REDIS_DSN"))
 	}),
 	fx.Provide(redisStorage.NewQueue),
-	fx.Provide(redisStorage.NewProcessing),
+	fx.Provide(func(rdb *goredis.Client, cfg *port.CrawlConfig) *redisStorage.Processing {
+		return redisStorage.NewProcessing(rdb, cfg.WorkersCount)
+	}),
 	fx.Provide(redisStorage.NewRetry),
 	fx.Provide(fx.Annotate(
 		redisStorage.NewURLDS,

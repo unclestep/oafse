@@ -22,7 +22,11 @@ func NewURLRepoCache(source ds.URLCacheDS) *URLRepoCache {
 }
 
 func (r *URLRepoCache) Start(ctx context.Context, url string) error {
-	return r.Start(ctx, url)
+	return r.s.Start(ctx, url)
+}
+
+func (r *URLRepoCache) StartHealthChecking(ctx context.Context, cfg *port.CrawlConfig) {
+	r.s.StartHealthChecking(ctx, cfg)
 }
 
 func (r *URLRepoCache) TakeOn(ctx context.Context, workerID string) (*domain.URL, error) {

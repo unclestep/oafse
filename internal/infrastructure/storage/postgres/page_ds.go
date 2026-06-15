@@ -153,7 +153,9 @@ func (s *PageDS) InsertLinks(ctx context.Context, links []*link) error {
 	defer cancel()
 
 	br := s.dbtx.SendBatch(ctx, batch)
-	defer br.Close()
+	defer func() {
+		_ = br.Close()
+	}()
 
 	for range batch.Len() {
 		if _, err := br.Exec(); err != nil {

@@ -10,6 +10,8 @@ import (
 	"oafse/internal/application/port"
 	"oafse/internal/domain/model"
 	"oafse/internal/infrastructure/extractor"
+
+	read "codeberg.org/readeck/go-readability/v2"
 )
 
 func mustURL(t *testing.T, raw string) *model.URL {
@@ -20,7 +22,9 @@ func mustURL(t *testing.T, raw string) *model.URL {
 }
 
 func TestExtractorExtract(t *testing.T) {
-	e := extractor.NewExtractor()
+	parser := read.NewParser()
+	parser.CharThresholds = 0
+	e := extractor.NewExtractor(&parser)
 	base := mustURL(t, "https://example.com")
 
 	t.Run("MixedLinks", func(t *testing.T) {

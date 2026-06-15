@@ -6,6 +6,7 @@ import (
 )
 
 type CrawlConfig struct {
+	StartURL                  string
 	WorkersCount              int
 	TryLim                    int
 	TryBaseInterval           time.Duration

@@ -2,9 +2,9 @@ package worker
 
 import (
 	"context"
+	"strconv"
 	"sync"
 	"time"
-	"strconv"
 
 	"oafse/internal/application/port"
 )
@@ -16,25 +16,24 @@ type Worker struct {
 
 func NewWorker(id string, parse port.ParseUseCase) *Worker {
 	return &Worker{
-		id: id,
+		id:    id,
 		parse: parse,
 	}
 }
 
 type WorkerPool struct {
-	parse port.ParseUseCase
-	wg *sync.WaitGroup
+	wg      *sync.WaitGroup
 	workers []*Worker
 }
 
-func NewWorkerPool(cfg port.CrawlConfig, parse port.ParseUseCase) *WorkerPool {
+func NewWorkerPool(cfg *port.CrawlConfig, parse port.ParseUseCase) *WorkerPool {
 	workers := make([]*Worker, cfg.WorkersCount)
 	for i := range cfg.WorkersCount {
 		workers[i] = NewWorker(strconv.Itoa(i), parse)
 	}
 
 	pool := &WorkerPool{
-		wg: &sync.WaitGroup{},
+		wg:      &sync.WaitGroup{},
 		workers: workers,
 	}
 	return pool

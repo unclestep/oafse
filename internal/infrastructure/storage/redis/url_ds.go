@@ -60,12 +60,9 @@ func NewURLDS(rdb *redis.Client, queue *Queue, processing *Processing, retry *Re
 }
 
 func (s *URLDS) Start(ctx context.Context, url string) error {
-	pushed, err := s.PushURL(ctx, url)
+	_, err := s.PushURL(ctx, url)
 	if err != nil {
 		return fmt.Errorf("start: %w", err)
-	}
-	if pushed {
-		return fmt.Errorf("start: url was not pushed")
 	}
 	return nil
 }

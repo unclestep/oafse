@@ -68,7 +68,7 @@ func (f *Fetcher) Fetch(parent context.Context, u *model.URL) (*port.FetchData, 
 	}
 	defer func() {
 		_, _ = io.Copy(io.Discard, resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 	}()
 
 	if fetchStatus := port.ClassifyStatus(resp.StatusCode); fetchStatus != port.FetchOK {
@@ -109,10 +109,11 @@ func (f *Fetcher) Fetch(parent context.Context, u *model.URL) (*port.FetchData, 
 			chromedp.NoSandbox,
 			chromedp.Headless,
 		)
-		allocCtx, cancel := chromedp.NewExecAllocator(parent, opts...)
-		ctx, cancel := chromedp.NewContext(allocCtx)
+		allocCtx, cancelAlloc := chromedp.NewExecAllocator(parent, opts...)
+		defer cancelAlloc()
+		ctx, cancelCtx := chromedp.NewContext(allocCtx)
+		defer cancelCtx()
 		chromedp.ListenTarget(ctx, blockNonEssentialResources(ctx))
-		defer cancel()
 
 		var res string
 		err := chromedp.Run(ctx,
@@ -162,9 +163,9 @@ func blockNonEssentialResources(ctx context.Context) func(event any) {
 			}
 
 			if blocked[ev.ResourceType] {
-				fetch.FailRequest(ev.RequestID, network.ErrorReasonBlockedByClient).Do(execCtx)
+				_ = fetch.FailRequest(ev.RequestID, network.ErrorReasonBlockedByClient).Do(execCtx)
 			} else {
-				fetch.ContinueRequest(ev.RequestID).Do(execCtx)
+				_ = fetch.ContinueRequest(ev.RequestID).Do(execCtx)
 			}
 		}()
 	}

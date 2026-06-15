@@ -22,7 +22,11 @@ func NewCrawlRepo(URLRepoCache *URLRepoCache, pageRepoDB *PageRepoDB) *CrawlRepo
 }
 
 func (r *CrawlRepo) Start(ctx context.Context, url string) error {
-	return r.Start(ctx, url)
+	return r.urlRepoCache.Start(ctx, url)
+}
+
+func (r *CrawlRepo) StartHealthChecking(ctx context.Context, cfg *port.CrawlConfig) {
+	r.urlRepoCache.StartHealthChecking(ctx, cfg)
 }
 
 func (r *CrawlRepo) TakeOn(ctx context.Context, workerID string) (*model.URL, error) {

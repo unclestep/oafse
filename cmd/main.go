@@ -2,8 +2,11 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
+	"net/url"
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
 	"go.uber.org/fx"
@@ -13,11 +16,32 @@ import (
 )
 
 func main() {
-	startURL := flag.String("-u", "https://quotes.toscrape.com", "Domain to parse")
+	startURL := flag.String("u", "https://quotes.toscrape.com", "Start URL for crawling")
+	flag.Parse()
+
 	_ = godotenv.Load(".env")
 	if err := postgres.Migrate(os.Getenv("POSTGRES_DSN")); err != nil {
 		log.Fatalf("migration failed: %s", err)
 	}
 
-	fx.New(di.Crawler).Run()
+	baseURL, err := normalizeStartURL(*startURL)
+	if err != nil {
+		log.Fatalf("invalid start URL: %s", err)
+	}
+
+	fx.New(di.NewCrawler(baseURL)).Run()
+}
+
+func normalizeStartURL(raw string) (string, error) {
+	if !strings.HasPrefix(raw, "http://") && !strings.HasPrefix(raw, "https://") {
+		raw = "https://" + raw
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", err
+	}
+	if u.Host == "" {
+		return "", fmt.Errorf("missing host in %q", raw)
+	}
+	return u.Scheme + "://" + u.Host, nil
 }

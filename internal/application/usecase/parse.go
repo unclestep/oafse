@@ -49,7 +49,7 @@ func (uc *Parse) Execute(ctx context.Context, workerID string) (*port.ParseCmd, 
 			return nil, wrap(err)
 		}
 		if md.UnprocessedCount > 0 {
-			var retryAt time.Time = time.Now().Add(rand.N(100 * time.Millisecond))
+			var retryAt = time.Now().Add(rand.N(100 * time.Millisecond))
 			if !md.EarliestRetry.IsZero() {
 				retryAt = md.EarliestRetry
 			}
@@ -90,6 +90,8 @@ func (uc *Parse) Execute(ctx context.Context, workerID string) (*port.ParseCmd, 
 	if err := uc.repo.Done(ctx, page); err != nil {
 		return giveUp(url, err)
 	}
+
+	log.Printf("[INFO] page %s is successfully parsed", page.URL)
 
 	return nil, nil
 }

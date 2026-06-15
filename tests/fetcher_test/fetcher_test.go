@@ -47,7 +47,8 @@ func TestFetcherHTML(t *testing.T) {
 				w.Header().Set("Content-Type", "text/html")
 				w.WriteHeader(http.StatusOK)
 
-				w.Write([]byte(htmlResponse))
+				_, err := w.Write([]byte(htmlResponse))
+				assert.NoError(t, err)
 			}),
 		)
 		defer ts.Close()
@@ -64,7 +65,8 @@ func TestFetcherHTML(t *testing.T) {
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
 
-				w.Write([]byte(htmlResponse))
+				_, err := w.Write([]byte(htmlResponse))
+				assert.NoError(t, err)
 			}),
 		)
 		defer ts.Close()
@@ -82,7 +84,8 @@ func TestFetcherHTML(t *testing.T) {
 				w.Header().Set("Content-Type", "text/plain")
 				w.WriteHeader(http.StatusOK)
 
-				w.Write([]byte(htmlResponse))
+				_, err := w.Write([]byte(htmlResponse))
+				assert.NoError(t, err)
 			}),
 		)
 		defer ts.Close()
@@ -106,7 +109,8 @@ func TestFetcherPlain(t *testing.T) {
 				w.Header().Set("Content-Type", "text/plain")
 				w.WriteHeader(http.StatusOK)
 
-				w.Write([]byte(plainResponse))
+				_, err := w.Write([]byte(plainResponse))
+				assert.NoError(t, err)
 			}),
 		)
 		defer ts.Close()
@@ -123,7 +127,8 @@ func TestFetcherPlain(t *testing.T) {
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
 
-				w.Write([]byte(plainResponse))
+				_, err := w.Write([]byte(plainResponse))
+				assert.NoError(t, err)
 			}),
 		)
 		defer ts.Close()
@@ -141,7 +146,8 @@ func TestFetcherPlain(t *testing.T) {
 				w.Header().Set("Content-Type", "text/csv")
 				w.WriteHeader(http.StatusOK)
 
-				w.Write([]byte(plainResponse))
+				_, err := w.Write([]byte(plainResponse))
+				assert.NoError(t, err)
 			}),
 		)
 		defer ts.Close()
@@ -155,8 +161,6 @@ func TestFetcherPlain(t *testing.T) {
 }
 
 func TestFetcherStatusNotOK(t *testing.T) {
-	// Non-200 responses are not errors — the fetcher returns FetchData with a
-	// classified status so the use case can decide retry vs give-up.
 	tests := []struct {
 		name       string
 		statusCode int
@@ -247,7 +251,8 @@ func TestFetcherSPA(t *testing.T) {
 				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "text/html")
 					w.WriteHeader(http.StatusOK)
-					w.Write([]byte(htmlResponse))
+					_, err := w.Write([]byte(htmlResponse))
+					assert.NoError(t, err)
 				}),
 			)
 			defer ts.Close()
@@ -279,7 +284,8 @@ func TestFetcherSPANextJSHeader(t *testing.T) {
 			w.Header().Set("Content-Type", "text/html")
 			w.Header().Set("X-Powered-By", "Next.js")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(htmlResponse))
+			_, err := w.Write([]byte(htmlResponse))
+			assert.NoError(t, err)
 		}),
 	)
 	defer ts.Close()
