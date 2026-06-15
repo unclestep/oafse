@@ -21,6 +21,10 @@ func NewURLRepoCache(source ds.URLCacheDS) *URLRepoCache {
 	}
 }
 
+func (r *URLRepoCache) Start(ctx context.Context, url string) error {
+	return r.Start(ctx, url)
+}
+
 func (r *URLRepoCache) TakeOn(ctx context.Context, workerID string) (*domain.URL, error) {
 	wrap := func(err error) error {
 		return fmt.Errorf("take on: %w", err)

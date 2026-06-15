@@ -59,6 +59,17 @@ func NewURLDS(rdb *redis.Client, queue *Queue, processing *Processing, retry *Re
 	}
 }
 
+func (s *URLDS) Start(ctx context.Context, url string) error {
+	pushed, err := s.PushURL(ctx, url)
+	if err != nil {
+		return fmt.Errorf("start: %w", err)
+	}
+	if pushed {
+		return fmt.Errorf("start: url was not pushed")
+	}
+	return nil
+}
+
 func (s *URLDS) StartHealthChecking(ctx context.Context, cfg *port.CrawlConfig) {
 	go func(worryThreshold time.Duration) {
 		for {
@@ -87,7 +98,7 @@ func (s *URLDS) GetURLInfo(ctx context.Context, url string) (*URLInfo, error) {
 
 // TakeOn - lazily enqueue urls from retry queue. Better way to sleep workers before earliest URL becomes available
 func (s *URLDS) TakeOn(ctx context.Context, workerID string) (*model.URLCache, error) {
-	_, err := s.Retry.EnqueueURLs(ctx)
+	_, err := s.EnqueueURLs(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("take on: can't enqueue urls: %w", err)
 	}
@@ -103,11 +114,11 @@ func (s *URLDS) RetryURL(ctx context.Context, url string, retryAt time.Time) err
 }
 
 func (s *URLDS) GiveUpURL(ctx context.Context, url string) error {
-	return s.Processing.MarkProcessed(ctx, url, StatusFailure)
+	return s.MarkProcessed(ctx, url, StatusFailure)
 }
 
 func (s *URLDS) Done(ctx context.Context, url string) error {
-	return s.Processing.MarkProcessed(ctx, url, StatusProcessed)
+	return s.MarkProcessed(ctx, url, StatusProcessed)
 }
 
 var getCrawlMetadataScript = redis.NewScript(`

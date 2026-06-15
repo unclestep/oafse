@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 	"log"
+	"math/rand/v2"
+	"time"
 
 	"oafse/internal/application/port"
 	"oafse/internal/domain/model"
@@ -48,7 +49,11 @@ func (uc *Parse) Execute(ctx context.Context, workerID string) (*port.ParseCmd, 
 			return nil, wrap(err)
 		}
 		if md.UnprocessedCount > 0 {
-			return &port.ParseCmd{Directive: port.DirectiveSleep, SleepFor: time.Until(md.EarliestRetry)}, nil
+			var retryAt time.Time = time.Now().Add(rand.N(100 * time.Millisecond))
+			if !md.EarliestRetry.IsZero() {
+				retryAt = md.EarliestRetry
+			}
+			return &port.ParseCmd{Directive: port.DirectiveSleep, SleepFor: time.Until(retryAt)}, nil
 		}
 		return &port.ParseCmd{
 			Directive: port.DirectiveStop,

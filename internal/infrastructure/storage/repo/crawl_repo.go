@@ -21,6 +21,10 @@ func NewCrawlRepo(URLRepoCache *URLRepoCache, pageRepoDB *PageRepoDB) *CrawlRepo
 	}
 }
 
+func (r *CrawlRepo) Start(ctx context.Context, url string) error {
+	return r.Start(ctx, url)
+}
+
 func (r *CrawlRepo) TakeOn(ctx context.Context, workerID string) (*model.URL, error) {
 	return r.urlRepoCache.TakeOn(ctx, workerID)
 }

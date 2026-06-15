@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"time"
 
 	"oafse/internal/application/port"
 	"oafse/internal/domain/model"
@@ -15,13 +16,11 @@ import (
 )
 
 type Extractor struct {
-	parser read.Parser
+	parser *read.Parser
 }
 
-func NewExtractor() *Extractor {
-	p := read.NewParser()
-	p.CharThresholds = 0
-	return &Extractor{parser: p}
+func NewExtractor(parser *read.Parser) *Extractor {
+	return &Extractor{parser: parser}
 }
 
 func (e *Extractor) Extract(fetchData *port.FetchData) (*model.Page, error) {
@@ -60,6 +59,7 @@ func (e *Extractor) Extract(fetchData *port.FetchData) (*model.Page, error) {
 		Title:       art.Title(),
 		Description: art.Excerpt(),
 		Content:     sb.String(),
+		CrawledAt:   time.Now(),
 		Links:       links,
 	}, nil
 }
@@ -77,7 +77,7 @@ func (e *Extractor) extractLinks(root *html.Node, base *model.URL) []string {
 						break
 					}
 
-					abs := base.URL.ResolveReference(ref)
+					abs := base.ResolveReference(ref)
 					if base.Hostname() == abs.Hostname() {
 						cand, err := model.NewURLFromParsed(abs)
 						if err != nil {

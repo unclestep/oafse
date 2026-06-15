@@ -30,8 +30,7 @@ var spaMarkers = []string{
 }
 
 type Fetcher struct {
-	client     *http.Client
-	spaMarkers []string
+	client *http.Client
 }
 
 func NewFetcher(client *http.Client) *Fetcher {

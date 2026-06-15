@@ -1,5 +1,5 @@
 all:
-	CGO_ENABLED=0 go build -o crawler cmd/main.go 
+	CGO_ENABLED=0 go build -o crawler cmd/main.go
 
 setup:
 	@echo "Installing Chromium for SPA tests..."

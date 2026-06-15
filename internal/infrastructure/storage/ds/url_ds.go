@@ -8,6 +8,7 @@ import (
 )
 
 type URLCacheDS interface {
+	Start(ctx context.Context, url string) error
 	TakeOn(ctx context.Context, workerID string) (*model.URLCache, error)
 	PushURLs(ctx context.Context, urls []string) ([]string, error)
 	RetryURL(ctx context.Context, url string, retryAt time.Time) error

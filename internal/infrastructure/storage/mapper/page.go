@@ -7,9 +7,7 @@ import (
 
 func ToDomainPage(page *storage.PageDB) *domain.Page {
 	domainLinks := make([]string, len(page.Links))
-	for i, link := range page.Links {
-		domainLinks[i] = link
-	}
+	copy(domainLinks, page.Links)
 	return &domain.Page{
 		URL:         page.URL,
 		Title:       page.Title,
@@ -22,9 +20,7 @@ func ToDomainPage(page *storage.PageDB) *domain.Page {
 
 func ToStoragePage(page *domain.Page) *storage.PageDB {
 	storageLinks := make([]string, len(page.Links))
-	for i, link := range page.Links {
-		storageLinks[i] = link
-	}
+	copy(storageLinks, page.Links)
 	return &storage.PageDB{
 		URL:         page.URL,
 		Title:       page.Title,
