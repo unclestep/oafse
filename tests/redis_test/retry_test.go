@@ -2,10 +2,12 @@ package redis_test
 
 import (
 	"context"
-	redis "github.com/redis/go-redis/v9"
 	"time"
 
-	sredis "oafse/internal/redis"
+	redis "github.com/redis/go-redis/v9"
+
+	storage "oafse/internal/infrastructure/storage/model"
+	sredis "oafse/internal/infrastructure/storage/redis"
 )
 
 func (s *RedisSuite) TestEnqueueURLsBasic() {
@@ -14,11 +16,11 @@ func (s *RedisSuite) TestEnqueueURLsBasic() {
 	}
 
 	s.prepareProcessingQueue(url)
-	err := s.curator.RetryURL(context.Background(), "URL1", time.Now().Add(time.Millisecond))
+	err := s.curator.RetryURL(context.Background(), "URL1", time.Now().Add(50*time.Millisecond))
 	s.NoError(err)
-	err = s.curator.RetryURL(context.Background(), "URL2", time.Now().Add(10*time.Millisecond))
+	err = s.curator.RetryURL(context.Background(), "URL2", time.Now().Add(300*time.Millisecond))
 	s.NoError(err)
-	time.Sleep(5 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	remain, err := s.curator.EnqueueURLs(context.Background())
 	s.NoError(err)
@@ -32,12 +34,12 @@ func (s *RedisSuite) TestEnqueueURLsBasic() {
 	if !s.NoError(err) {
 		return
 	}
-	s.Equal(sredis.StatusQueue, info.Status)
-	s.Equal(1, info.Tries)
+	s.Equal(storage.QueuedCrawlStatus, info.Status)
+	s.Equal(1, info.Try)
 
 	info2, err := s.curator.GetURLInfo(context.Background(), "URL2")
 	s.NoError(err)
-	s.Equal(sredis.StatusRetry, info2.Status)
+	s.Equal(storage.RetryCrawlStatus, info2.Status)
 
 	// Idempotent
 	remain, err = s.curator.EnqueueURLs(context.Background())
@@ -47,8 +49,8 @@ func (s *RedisSuite) TestEnqueueURLsBasic() {
 	s.NoError(err)
 	s.Equal(int64(1), llen)
 
-	// Enqueue all
-	time.Sleep(5 * time.Millisecond)
+	// Enqueue all: wait for URL2's retryAt (300ms total from start, already slept 100ms)
+	time.Sleep(250 * time.Millisecond)
 	remain, err = s.curator.EnqueueURLs(context.Background())
 	s.NoError(err)
 	s.Equal(int64(0), remain)
@@ -79,5 +81,5 @@ func (s *RedisSuite) TestEnqueueURLsNoStatusEntry() {
 
 	info, err := s.curator.GetURLInfo(context.Background(), "ORPHAN")
 	s.NoError(err)
-	s.Equal(sredis.StatusQueue, info.Status)
+	s.Equal(storage.QueuedCrawlStatus, info.Status)
 }

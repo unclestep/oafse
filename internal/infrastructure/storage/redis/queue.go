@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	"oafse/internal/application/port"
+	storage "oafse/internal/infrastructure/storage/model"
+
 	"github.com/redis/go-redis/v9"
 )
 
@@ -22,7 +25,7 @@ var popURLScript = redis.NewScript(`
 	local keyProcessingQueue = KEYS[3]
 	local keyProcessingIndex = KEYS[4]
 	local workerID = ARGV[1]
-	local processingStartTime = ARGV[2]
+	local takeOnAt = ARGV[2]
 	local newStatus = ARGV[3]
 
 	local url = redis.call("LMOVE", keyQueue, keyProcessingQueue, "RIGHT", "LEFT")
@@ -33,41 +36,61 @@ var popURLScript = redis.NewScript(`
 	local oldJSON = redis.call('HGET', keyURLStatus, url)
 	local info = cjson.decode(oldJSON)
 
-	info['status'] = newStatus
+	info['status'] = tonumber(newStatus)
 	info['worker_id'] = workerID
-	info['processing_start_time'] = tonumber(processingStartTime)
+	info['take_on_at'] = tonumber(takeOnAt)
 
 	local newJSON = cjson.encode(info)
 	redis.call('HSET', keyURLStatus, url, newJSON)
 
 	redis.call('SADD', keyProcessingIndex, url)
 
-	return url
+	return {url, info['try'], info['parent']}
 `)
 
-func (q *Queue) PopURL(ctx context.Context, workerID string) (string, error) {
+func (q *Queue) TakeOn(ctx context.Context, workerID string) (*storage.URLCache, error) {
 	keyProcessingQueue := WorkerKey(workerID)
 
-	url, err := popURLScript.Run(
+	vals, err := popURLScript.Run(
 		ctx, q.rdb,
 		[]string{KeyQueue, KeyURLStatus, keyProcessingQueue, KeyProcessingIndex},
-		workerID, time.Now().UnixMilli(), string(StatusProcessing),
-	).Text()
+		workerID, time.Now().UnixMilli(), int(storage.ProcessingCrawlStatus),
+	).Slice()
 	if err == redis.Nil {
-		return "", nil
+		return nil, port.ErrQueueEmpty
 	}
 	if err != nil {
-		return "", fmt.Errorf("pop url lua: %w", err)
+		return nil, fmt.Errorf("take on: %w", err)
 	}
 
-	return url, nil
+	url, ok := vals[0].(string)
+	if !ok {
+		return nil, fmt.Errorf("take on: unexpected url type %T", vals[0])
+	}
+
+	try, ok := vals[1].(int64)
+	if !ok {
+		return nil, fmt.Errorf("take on: unexpected try type %T", vals[1])
+	}
+
+	parent, ok := vals[2].(string)
+	if !ok {
+		return nil, fmt.Errorf("take on: unexpected parent type %T", vals[2])
+	}
+
+	return &storage.URLCache{
+		URL:    url,
+		Try:    int(try),
+		Parent: parent,
+	}, nil
 }
 
 var pushURLScript = redis.NewScript(`
 	local keyURLStatus = KEYS[1]
 	local keyQueue = KEYS[2]
 	local url = ARGV[1]
-	local status = ARGV[2]
+	local parent = ARGV[2]
+	local status = ARGV[3]
 
 	local isSeen = redis.call('HGET', keyURLStatus, url)
 
@@ -76,11 +99,12 @@ var pushURLScript = redis.NewScript(`
 	end
 
 	local info = {
-		status = status,
+		status = tonumber(status),
 		worker_id = '',
-		tries = 0,
-		processing_start_time = -1,
-		next_retry_time = -1,
+		try = 0,
+		take_on_at = -1,
+		retry_at = -1,
+		parent = parent,
 	}
 
 	local pushedJSON = cjson.encode(info)
@@ -90,16 +114,16 @@ var pushURLScript = redis.NewScript(`
 	return 1
 `)
 
-func (q *Queue) PushURL(ctx context.Context, url string) (bool, error) {
+func (q *Queue) PushURL(ctx context.Context, url *storage.URLCache) (bool, error) {
 	res, err := pushURLScript.Run(
 		ctx, q.rdb,
 		[]string{KeyURLStatus, KeyQueue},
-		url, string(StatusQueue),
+		url.URL, url.Parent, int(storage.QueuedCrawlStatus),
 	).Int()
 	return res == 1, err
 }
 
-func (q *Queue) PushURLs(ctx context.Context, urls []string) ([]string, error) {
+func (q *Queue) PushURLs(ctx context.Context, urls []*storage.URLCache) ([]*storage.URLCache, error) {
 	pipe := q.rdb.Pipeline()
 
 	cmds := make([]*redis.Cmd, len(urls))
@@ -107,7 +131,7 @@ func (q *Queue) PushURLs(ctx context.Context, urls []string) ([]string, error) {
 		cmds[i] = pushURLScript.Eval(
 			ctx, pipe,
 			[]string{KeyURLStatus, KeyQueue},
-			url, string(StatusQueue),
+			url.URL, url.Parent, int(storage.QueuedCrawlStatus),
 		)
 	}
 
@@ -116,12 +140,13 @@ func (q *Queue) PushURLs(ctx context.Context, urls []string) ([]string, error) {
 		return nil, err
 	}
 
-	var pushed []string
+	var pushed []*storage.URLCache
 	for i, cmd := range cmds {
 		res, err := cmd.Int()
-		if err == nil && res == 1 {
-			pushed = append(pushed, urls[i])
+		if err != nil || res != 1 {
+			continue
 		}
+		pushed = append(pushed, urls[i])
 	}
 
 	return pushed, nil

@@ -1,26 +1,47 @@
 services:
-  redis:
+  oafse-crawler:
+    build: .
+    container_name: oafse-crawler
+    env_file: ".env"
+    environment:
+      POSTGRES_DSN: ${POSTGRES_DOCKER_DSN}
+      REDIS_DSN: ${REDIS_DOCKER_DSN}
+    ports:
+      - 14444:14444
+    networks:
+      - oafse-net
+    depends_on:
+      oafse-redis:
+        condition: service_started
+      oafse-postgres:
+        condition: service_healthy
+  oafse-redis:
     image: redis:alpine
-    container_name: safse_redis
-    platform: linux/arm64
+    container_name: oafse_redis
     ports:
       - 6379:6379
     networks:
-      - safse-net
-  posgresql:
+      - oafse-net
+
+  oafse-postgres:
     image: postgres:18-alpine
-    container_name: safse_postgres
-    platform: linux/arm64
+    container_name: oafse_postgres
     env_file: ".env"
     ports:
       - 5432:5432
     networks:
-      - safse-net
+      - oafse-net
     volumes:
-      - safse-db:/var/lib/postgresql
+      - oafse-db:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      start_period: 30s
+      timeout: 5s
+      retries: 5
 
 networks:
-  safse-net:
+  oafse-net:
 
 volumes:
-  safse-db:
+  oafse-db:

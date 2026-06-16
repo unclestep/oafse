@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	pg "oafse/internal/postgres"
+	pg "oafse/internal/infrastructure/storage/postgres"
+	storage "oafse/internal/infrastructure/storage/model"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -62,169 +63,124 @@ func (s *PostgresSuite) TearDownTest() {
 	s.tx.Rollback(context.Background()) //nolint:errcheck
 }
 
+func (s *PostgresSuite) ds() *pg.PageDS {
+	return pg.NewPageDS(s.tx)
+}
+
+func (s *PostgresSuite) countRows(table string) int {
+	var n int
+	err := s.tx.QueryRow(context.Background(), "SELECT count(*) FROM "+table).Scan(&n)
+	s.Require().NoError(err)
+	return n
+}
+
+func (s *PostgresSuite) linkExists(srcPageID, dstPageID int64) bool {
+	var exists bool
+	err := s.tx.QueryRow(
+		context.Background(),
+		"SELECT EXISTS(SELECT 1 FROM links WHERE src_page_id = $1 AND dst_page_id = $2)",
+		srcPageID, dstPageID,
+	).Scan(&exists)
+	s.Require().NoError(err)
+	return exists
+}
+
 func (s *PostgresSuite) TestInsertPage() {
-	validPages := []*pg.Page{
-		{URL: "URL1", Title: "Title1", Status: 200},
-		{URL: "URL2", Title: "Title2", Status: 200},
-		{URL: "URL3", Title: "Title3", Status: 200},
+	ds := s.ds()
+	ctx := context.Background()
+
+	validPages := []*storage.PageDB{
+		{URL: "URL1", Title: "Title1"},
+		{URL: "URL2", Title: "Title2"},
+		{URL: "URL3", Title: "Title3"},
 	}
 
 	for _, page := range validPages {
-		subtestName := fmt.Sprintf("Insert valid Page: %s", page.URL)
-		s.Run(subtestName, func() {
-			id, err := pg.InsertPage(context.Background(), s.tx, page)
+		s.Run(fmt.Sprintf("Insert valid Page: %s", page.URL), func() {
+			id, err := ds.InsertPage(ctx, page)
 			s.NoError(err)
-			s.NotEqual(-1, id)
+			s.Greater(id, int64(0))
 		})
 	}
 
-	existedPages := []*pg.Page{
-		{URL: "URL1", Title: "NewTitle1", Status: 200},
-		{URL: "URL2", Title: "NewTitle2", Status: 200},
+	s.Equal(3, s.countRows("pages"))
+
+	existedPages := []*storage.PageDB{
+		{URL: "URL1", Title: "NewTitle1"},
+		{URL: "URL2", Title: "NewTitle2"},
 	}
 
 	for _, page := range existedPages {
-		subtestName := fmt.Sprintf("Insert existed Page: %s", page.URL)
-		s.Run(subtestName, func() {
-			var before, after int
-			ctx := context.Background()
+		s.Run(fmt.Sprintf("Upsert existing Page: %s", page.URL), func() {
+			before := s.countRows("pages")
 
-			err := s.tx.QueryRow(ctx, "SELECT count(*) FROM pages").Scan(&before)
+			_, err := ds.InsertPage(ctx, page)
 			s.NoError(err)
 
-			_, err = pg.InsertPage(ctx, s.tx, page)
-			s.NoError(err)
-
-			exists, err := pg.PageExists(ctx, s.tx, page.URL)
+			exists, err := ds.PageExists(ctx, page.URL)
 			s.NoError(err)
 			s.True(exists)
 
-			updatedPage, err := pg.GetPage(context.Background(), s.tx, page.URL)
+			updated, err := ds.GetPage(ctx, page.URL)
 			s.NoError(err)
-			s.Equal(updatedPage.Title, page.Title)
-			s.Equal(updatedPage.URL, page.URL)
+			s.Equal(page.Title, updated.Title)
+			s.Equal(page.URL, updated.URL)
 
-			err = s.tx.QueryRow(context.Background(), "SELECT count(*) FROM pages").Scan(&after)
-			s.NoError(err)
-
-			s.Equal(before, after)
+			s.Equal(before, s.countRows("pages"), "row count must not increase on conflict")
 		})
 	}
-}
-
-func (s *PostgresSuite) insertTestPages() []*pg.Page {
-	pages := []*pg.Page{
-		{URL: "URL1", Title: "Title1", Status: 200},
-		{URL: "URL2", Title: "Title2", Status: 200},
-		{URL: "URL3", Title: "Title3", Status: 200},
-	}
-	for _, page := range pages {
-		id, err := pg.InsertPage(context.Background(), s.tx, page)
-		s.Require().NoError(err)
-		s.NotEqual(-1, id)
-		page.ID = id
-	}
-	return pages
 }
 
 func (s *PostgresSuite) TestInsertLink() {
-	pages := s.insertTestPages()
+	ds := s.ds()
+	ctx := context.Background()
 
-	validLinks := []*pg.Link{
-		{SrcPageID: pages[0].ID, DstURL: "URL2"},
-		{SrcPageID: pages[0].ID, DstURL: "URL3"},
-		{SrcPageID: pages[1].ID, DstURL: "URL1"},
-		{SrcPageID: pages[2].ID, DstURL: "URL2"},
-	}
+	parentID, err := ds.InsertPage(ctx, &storage.PageDB{URL: "PARENT", Title: "Parent"})
+	s.Require().NoError(err)
 
-	for _, link := range validLinks {
-		subtestName := fmt.Sprintf("Insert valid link %d-%s", link.SrcPageID, link.DstURL)
-		s.Run(subtestName, func() {
-			var before, after int
-			ctx := context.Background()
+	child1ID, err := ds.InsertPage(ctx, &storage.PageDB{URL: "CHILD1", Title: "Child1"})
+	s.Require().NoError(err)
 
-			err := s.tx.QueryRow(ctx, "SELECT count(*) FROM links").Scan(&before)
-			s.NoError(err)
+	child2ID, err := ds.InsertPage(ctx, &storage.PageDB{URL: "CHILD2", Title: "Child2"})
+	s.Require().NoError(err)
 
-			err = pg.InsertLink(context.Background(), s.tx, link)
-			s.NoError(err)
+	s.Run("Insert link to existing parent", func() {
+		before := s.countRows("links")
 
-			err = s.tx.QueryRow(ctx, "SELECT count(*) FROM links").Scan(&after)
-			s.NoError(err)
+		err := ds.InsertLink(ctx, "PARENT", child1ID)
+		s.NoError(err)
 
-			s.Equal(before+1, after)
-		})
-	}
+		s.Equal(before+1, s.countRows("links"))
+		s.True(s.linkExists(parentID, child1ID))
+	})
 
-	existedLinks := validLinks
+	s.Run("Insert another link from the same parent", func() {
+		before := s.countRows("links")
 
-	for _, link := range existedLinks {
-		subtestName := fmt.Sprintf("Insert existed link %d-%s", link.SrcPageID, link.DstURL)
-		s.Run(subtestName, func() {
-			var before, after int
-			ctx := context.Background()
+		err := ds.InsertLink(ctx, "PARENT", child2ID)
+		s.NoError(err)
 
-			err := s.tx.QueryRow(ctx, "SELECT count(*) FROM links").Scan(&before)
-			s.NoError(err)
+		s.Equal(before+1, s.countRows("links"))
+		s.True(s.linkExists(parentID, child2ID))
+	})
 
-			err = pg.InsertLink(ctx, s.tx, link)
-			s.NoError(err)
+	s.Run("Insert duplicate link is idempotent", func() {
+		before := s.countRows("links")
 
-			err = s.tx.QueryRow(ctx, "SELECT count(*) FROM links").Scan(&after)
-			s.NoError(err)
+		err := ds.InsertLink(ctx, "PARENT", child1ID)
+		s.NoError(err)
 
-			s.Equal(after, before)
-		})
-	}
-}
+		s.Equal(before, s.countRows("links"), "ON CONFLICT DO NOTHING must not duplicate links")
+	})
 
-func (s *PostgresSuite) TestSavePageCrawl() {
-	pages := s.insertTestPages()
+	s.Run("Insert link with unknown parent URL is a no-op", func() {
+		before := s.countRows("links")
 
-	tests := []struct {
-		Page  *pg.Page
-		Links []*pg.Link
-	}{
-		{
-			&pg.Page{URL: "URL4", Title: "Title4", Status: 200},
-			[]*pg.Link{
-				{SrcPageID: pages[0].ID, DstURL: "URL4"},
-				{SrcPageID: pages[1].ID, DstURL: "URL4"},
-				{SrcPageID: pages[2].ID, DstURL: "URL4"},
-			},
-		},
-		{
-			&pg.Page{URL: "URL5", Title: "Title5", Status: 200},
-			[]*pg.Link{
-				{SrcPageID: pages[0].ID, DstURL: "URL5"},
-				{SrcPageID: pages[1].ID, DstURL: "URL5"},
-				{SrcPageID: pages[2].ID, DstURL: "URL5"},
-			},
-		},
-	}
+		err := ds.InsertLink(ctx, "UNKNOWN-PARENT", child1ID)
+		s.NoError(err)
 
-	for _, test := range tests {
-		subtestName := fmt.Sprintf("Page Crawl: %s", test.Page.URL)
-		s.Run(subtestName, func() {
-			var before, after int
-			ctx := context.Background()
-
-			err := s.tx.QueryRow(ctx, "SELECT count(*) FROM links").Scan(&before)
-			s.NoError(err)
-
-			err = pg.SavePageCrawl(ctx, s.tx, test.Page, test.Links)
-			s.NoError(err)
-
-			exists, err := pg.PageExists(ctx, s.tx, test.Page.URL)
-			s.NoError(err)
-			s.True(exists)
-
-			err = s.tx.QueryRow(ctx, "SELECT count(*) FROM links").Scan(&after)
-			s.NoError(err)
-
-			s.Equal(before+len(test.Links), after)
-		})
-	}
+		s.Equal(before, s.countRows("links"), "no matching parent row means nothing should be inserted")
+	})
 }
 
 func TestPostgresSuite(t *testing.T) {

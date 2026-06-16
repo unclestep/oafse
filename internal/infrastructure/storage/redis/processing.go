@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	storage "oafse/internal/infrastructure/storage/model"
+
 	"github.com/redis/go-redis/v9"
 )
 
@@ -38,7 +40,7 @@ var retryURLScript = redis.NewScript(`
 	local url = ARGV[1]
 	local prefixProcessingQueue = ARGV[2]
 	local newStatus = ARGV[3]
-	local next_retry_time = ARGV[4]
+	local retryAt = ARGV[4]
 
 	local oldJSON = redis.call('HGET', keyURLStatus, url)
 	if not oldJSON then
@@ -47,16 +49,16 @@ var retryURLScript = redis.NewScript(`
 	local info = cjson.decode(oldJSON)
 
 	local keyProcessingQueue = prefixProcessingQueue .. ':' .. info['worker_id']
-	info['status'] = newStatus
-	info['tries'] = info['tries'] + 1
-	info['next_retry_time'] = tonumber(next_retry_time)
+	info['status'] = tonumber(newStatus)
+	info['try'] = info['try'] + 1
+	info['retry_at'] = tonumber(retryAt)
 
 	local newJSON = cjson.encode(info)
 
 	redis.call('HSET', keyURLStatus, url, newJSON)
 	redis.call('LREM', keyProcessingQueue, 1, url)
 	redis.call('SREM', keyProcessingIndex, url)
-	redis.call('ZADD', keyRetry, next_retry_time, url)
+	redis.call('ZADD', keyRetry, retryAt, url)
 
 	return 1
 `)
@@ -65,7 +67,7 @@ func (p *Processing) RetryURL(ctx context.Context, url string, nextRetryTime tim
 	err := retryURLScript.Run(
 		ctx, p.rdb,
 		[]string{KeyURLStatus, KeyProcessingIndex, KeyRetry},
-		url, PrefixProcessingQueue, string(StatusRetry), nextRetryTime.UnixMilli(),
+		url, PrefixProcessingQueue, int(storage.RetryCrawlStatus), nextRetryTime.UnixMilli(),
 	).Err()
 	if err != nil {
 		return fmt.Errorf("retry url: %w", err)
@@ -87,7 +89,7 @@ var markProcessedScript = redis.NewScript(`
 	local info = cjson.decode(oldJSON)
 
 	local keyProcessingQueue = prefixProcessingQueue .. ':' .. info['worker_id']
-	info['status'] = newStatus
+	info['status'] = tonumber(newStatus)
 
 	local newJSON = cjson.encode(info)
 
@@ -98,11 +100,11 @@ var markProcessedScript = redis.NewScript(`
 	return 1
 `)
 
-func (p *Processing) MarkProcessed(ctx context.Context, url string, procRes URLStatus) error {
+func (p *Processing) MarkProcessed(ctx context.Context, url string, status storage.CrawlStatus) error {
 	err := markProcessedScript.Run(
 		ctx, p.rdb,
 		[]string{KeyURLStatus, KeyProcessingIndex},
-		url, PrefixProcessingQueue, string(procRes),
+		url, PrefixProcessingQueue, int(status),
 	).Err()
 	if err != nil {
 		return fmt.Errorf("mark processed: %w", err)
@@ -122,11 +124,11 @@ var recoverScript = redis.NewScript(`
 
 	if not oldJSON then
 		local info = {
-			status = newStatus,
+			status = tonumber(newStatus),
 			worker_id = "",
-			tries = 0,
-			processing_start_time = -1,
-			next_retry_time = -1,
+			try = 0,
+			take_on_at = -1,
+			retry_at = -1,
 		}
 		local binInfo = cjson.encode(info)
 
@@ -138,12 +140,12 @@ var recoverScript = redis.NewScript(`
 	end
 
 	local info = cjson.decode(oldJSON)
-	info['status'] = newStatus
+	info['status'] = tonumber(newStatus)
 	local newJSON = cjson.encode(info)
 
 	redis.call('HSET', keyURLStatus, url, newJSON)
 	local keyProcessingQueue = prefixProcessingQueue .. ':' .. info['worker_id']
-	redis.call('LREM', keyProcessingQueue, 1, url)
+	redis.call('LREM', keyProcessingQueue, 0, url)
 	redis.call('SREM', keyProcessingIndex, url)
 	redis.call('LPUSH', keyQueue, url)
 	return 1
@@ -153,7 +155,7 @@ func (p *Processing) RecoverURL(ctx context.Context, url string) error {
 	err := recoverScript.Run(
 		ctx, p.rdb,
 		[]string{KeyURLStatus, KeyProcessingIndex, KeyQueue},
-		url, PrefixProcessingQueue, string(StatusQueue),
+		url, PrefixProcessingQueue, int(storage.QueuedCrawlStatus),
 	).Err()
 	if err != nil {
 		return fmt.Errorf("recover url: %w", err)
@@ -165,7 +167,6 @@ func (p *Processing) HealthCheck(ctx context.Context, worryThreshold time.Durati
 	var cursor uint64
 	for {
 		urls, nextCursor, err := p.rdb.SScan(ctx, KeyProcessingIndex, cursor, "", int64(p.workers)).Result()
-
 		if err != nil {
 			return fmt.Errorf("health check sscan: %w", err)
 		}
@@ -186,7 +187,7 @@ func (p *Processing) HealthCheck(ctx context.Context, worryThreshold time.Durati
 				return fmt.Errorf("health check unmarshal: %w", err)
 			}
 
-			if time.Now().UnixMilli()-info.ProcessingStartTime >= worryThreshold.Milliseconds() {
+			if time.Now().UnixMilli()-info.TakeOnAt >= worryThreshold.Milliseconds() {
 				if err := p.RecoverURL(ctx, url); err != nil {
 					return fmt.Errorf("health check recover url: %w", err)
 				}
