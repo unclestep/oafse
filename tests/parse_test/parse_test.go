@@ -237,10 +237,9 @@ func (s *ParseSuite) TestExecuteRetryLimitExceededGivesUpURL() {
 	}))
 	defer ts.Close()
 
-	// TryLim=2: first Execute retries (Try 0->1), second Execute gives up (Try 1 >= TryLim-1=1)
 	cfg := &model.CrawlConfig{
 		WorkersCount:              1,
-		TryLim:                    2,
+		TryLim:                    1,
 		TryBaseInterval:           50 * time.Millisecond,
 		HealthCheckWorryThreshold: 15 * time.Second,
 	}
@@ -249,7 +248,6 @@ func (s *ParseSuite) TestExecuteRetryLimitExceededGivesUpURL() {
 	ctx := context.Background()
 	s.Require().NoError(s.urlDS.Start(ctx, ts.URL))
 
-	// First execute: URL gets scheduled for retry
 	cmd, err := uc.Execute(ctx, "worker-0")
 	s.Require().NoError(err)
 	s.Nil(cmd)
@@ -259,10 +257,8 @@ func (s *ParseSuite) TestExecuteRetryLimitExceededGivesUpURL() {
 	s.Equal(sredis.StatusRetry, info.Status)
 	s.Equal(1, info.Try)
 
-	// Wait for retry delay to pass: 50ms * 2^1 = 100ms
 	time.Sleep(150 * time.Millisecond)
 
-	// Second execute: retry limit hit -> GiveUp
 	cmd, err = uc.Execute(ctx, "worker-0")
 	s.Require().NoError(err)
 	s.Nil(cmd)

@@ -14,6 +14,7 @@ var (
 
 type Fetcher interface {
 	Fetch(ctx context.Context, u *model.URL) (*FetchData, error)
+	CloseBrowser()
 }
 
 type FetchData struct {
@@ -31,6 +32,21 @@ const (
 	FetchRetry                         // 408, 429, 500, 502, 503, 504
 	FetchManual                        // 400, 401, 411
 )
+
+func (s FetchStatus) String() string {
+	switch s {
+	case FetchImpossible:
+		return "fetch impossible"
+	case FetchOK:
+		return "fetch ok"
+	case FetchRetry:
+		return "fetch retry"
+	case FetchManual:
+		return "fetch manual"
+	default:
+		return "unknown fetch status"
+	}
+}
 
 func ClassifyStatus(statusCode int) FetchStatus {
 	switch statusCode {

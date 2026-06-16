@@ -72,18 +72,20 @@ func (uc *Parse) Execute(ctx context.Context, workerID string) (*port.ParseCmd, 
 	if err != nil {
 		return giveUp(url, err)
 	}
-	if fd.Status == port.FetchImpossible || fd.Status == port.FetchManual {
-		return giveUp(url, fmt.Errorf("unrecoverable url status: %v", fd.Status))
+	if fd.Status != port.FetchOK && fd.Status != port.FetchRetry {
+		return giveUp(url, fmt.Errorf("unrecoverable url status: %v", fd.Status.String()))
 	}
 
-	retry, retryAt := uc.proc.DecideRetry(url, uc.cfg)
-	if retry && fd.Status == port.FetchRetry {
+	if fd.Status == port.FetchRetry {
+		retry, retryAt := uc.proc.DecideRetry(url, uc.cfg)
+		if !retry {
+			return giveUp(url, fmt.Errorf("retry limit exceeded: cur %d, threshold %d", url.Try, uc.cfg.TryLim))
+		}
+
 		if err = uc.repo.RetryURL(ctx, url.String(), retryAt); err != nil {
 			return giveUp(url, err)
 		}
 		return nil, nil
-	} else if !retry && fd.Status == port.FetchRetry {
-		return giveUp(url, fmt.Errorf("retry limit exceeded: cur %d, threshold %d", url.Try, uc.cfg.TryLim))
 	}
 
 	page, err := uc.extractor.Extract(fd)

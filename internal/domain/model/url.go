@@ -8,7 +8,7 @@ import (
 type URL struct {
 	*url.URL
 
-	Try     int
+	Try int
 }
 
 type CrawlStatus int
@@ -32,7 +32,7 @@ func (p CrawlStatus) String() string {
 	case RetryCrawlStatus:
 		return "Retry"
 	case GiveUpCrawlStatus:
-		return "GiveUP"
+		return "GiveUp"
 	default:
 		return "Unknown"
 	}
@@ -54,6 +54,9 @@ func NewURL(raw string) (*URL, error) {
 	unnorm, err := url.Parse(raw)
 	if err != nil {
 		return nil, fmt.Errorf("new url: %w", err)
+	}
+	if unnorm.Scheme == "" || unnorm.Host == "" {
+		return nil, fmt.Errorf("new url: not an absolute URL: %s", unnorm.String())
 	}
 
 	norm := Normalize(unnorm)

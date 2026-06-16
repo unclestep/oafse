@@ -66,7 +66,7 @@ func NewCrawler(startURL string, resume bool) fx.Option {
 				},
 			})
 		}),
-		fx.Invoke(func(lc fx.Lifecycle, pool *worker.WorkerPool, shutdowner fx.Shutdowner) {
+		fx.Invoke(func(lc fx.Lifecycle, pool *worker.WorkerPool, fetcher port.Fetcher, shutdowner fx.Shutdowner) {
 			var cancel context.CancelFunc
 
 			lc.Append(fx.Hook{
@@ -85,6 +85,7 @@ func NewCrawler(startURL string, resume bool) fx.Option {
 				},
 				OnStop: func(ctx context.Context) error {
 					cancel()
+					fetcher.CloseBrowser()
 					return nil
 				},
 			})

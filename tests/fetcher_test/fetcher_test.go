@@ -42,6 +42,8 @@ func TestFetcherHTML(t *testing.T) {
 		</html>
 	`
 
+	fetcher := newFetcher(t)
+
 	t.Run("WithContentType", func(t *testing.T) {
 		ts := httptest.NewServer(
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -54,7 +56,6 @@ func TestFetcherHTML(t *testing.T) {
 		)
 		defer ts.Close()
 
-		fetcher := newFetcher(t)
 		res, err := fetcher.Fetch(context.Background(), newURL(t, ts.URL))
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(htmlResponse), strings.TrimSpace(string(res.Raw)))
@@ -72,7 +73,6 @@ func TestFetcherHTML(t *testing.T) {
 		)
 		defer ts.Close()
 
-		fetcher := newFetcher(t)
 		res, err := fetcher.Fetch(context.Background(), newURL(t, ts.URL))
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(htmlResponse), strings.TrimSpace(string(res.Raw)))
@@ -91,18 +91,21 @@ func TestFetcherHTML(t *testing.T) {
 		)
 		defer ts.Close()
 
-		fetcher := newFetcher(t)
 		res, err := fetcher.Fetch(context.Background(), newURL(t, ts.URL))
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(htmlResponse), strings.TrimSpace(string(res.Raw)))
 		assert.Contains(t, "text/html", res.ContentType)
 	})
+
+	fetcher.CloseBrowser()
 }
 
 func TestFetcherPlain(t *testing.T) {
 	plainResponse := `
 	Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
 	`
+
+	fetcher := newFetcher(t)
 
 	t.Run("WithContentType", func(t *testing.T) {
 		ts := httptest.NewServer(
@@ -116,7 +119,6 @@ func TestFetcherPlain(t *testing.T) {
 		)
 		defer ts.Close()
 
-		fetcher := newFetcher(t)
 		res, err := fetcher.Fetch(context.Background(), newURL(t, ts.URL))
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(plainResponse), strings.TrimSpace(string(res.Raw)))
@@ -134,7 +136,6 @@ func TestFetcherPlain(t *testing.T) {
 		)
 		defer ts.Close()
 
-		fetcher := newFetcher(t)
 		res, err := fetcher.Fetch(context.Background(), newURL(t, ts.URL))
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(plainResponse), strings.TrimSpace(string(res.Raw)))
@@ -153,12 +154,13 @@ func TestFetcherPlain(t *testing.T) {
 		)
 		defer ts.Close()
 
-		fetcher := newFetcher(t)
 		res, err := fetcher.Fetch(context.Background(), newURL(t, ts.URL))
 		require.NoError(t, err)
 		assert.Equal(t, strings.TrimSpace(plainResponse), strings.TrimSpace(string(res.Raw)))
 		assert.Contains(t, "text/plain", res.ContentType)
 	})
+
+	fetcher.CloseBrowser()
 }
 
 func TestFetcherStatusNotOK(t *testing.T) {
@@ -179,6 +181,8 @@ func TestFetcherStatusNotOK(t *testing.T) {
 		{"Unauthorized 401", http.StatusUnauthorized, port.FetchManual},
 	}
 
+	fetcher := newFetcher(t)
+
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -186,14 +190,15 @@ func TestFetcherStatusNotOK(t *testing.T) {
 			}))
 			defer ts.Close()
 
-			f := newFetcher(t)
-			res, err := f.Fetch(context.Background(), newURL(t, ts.URL))
+			res, err := fetcher.Fetch(context.Background(), newURL(t, ts.URL))
 			require.NoError(t, err, "non-200 status must not produce a Go error")
 			require.NotNil(t, res)
 			assert.Equal(t, tc.wantStatus, res.Status)
 			assert.Empty(t, res.Raw, "body must not be read for non-200 responses")
 		})
 	}
+
+	fetcher.CloseBrowser()
 }
 
 func TestFetcherSPA(t *testing.T) {
@@ -239,6 +244,8 @@ func TestFetcherSPA(t *testing.T) {
 		},
 	}
 
+	fetcher := newFetcher(t)
+
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			htmlResponse := fmt.Sprintf(`
@@ -263,14 +270,15 @@ func TestFetcherSPA(t *testing.T) {
 			)
 			defer ts.Close()
 
-			f := newFetcher(t)
-			res, err := f.Fetch(context.Background(), newURL(t, ts.URL))
+			res, err := fetcher.Fetch(context.Background(), newURL(t, ts.URL))
 			require.NoError(t, err)
 			assert.True(t, chromedpUsed.Load(), "expected chromedp to re-fetch the SPA page")
 			assert.Contains(t, res.ContentType, "text/html")
 			assert.NotEmpty(t, res.Raw)
 		})
 	}
+
+	fetcher.CloseBrowser()
 }
 
 func TestFetcherSPANextJSHeader(t *testing.T) {
@@ -302,10 +310,13 @@ func TestFetcherSPANextJSHeader(t *testing.T) {
 	)
 	defer ts.Close()
 
-	f := newFetcher(t)
-	res, err := f.Fetch(context.Background(), newURL(t, ts.URL))
+	fetcher := newFetcher(t)
+
+	res, err := fetcher.Fetch(context.Background(), newURL(t, ts.URL))
 	require.NoError(t, err)
 	assert.True(t, chromedpUsed.Load(), "expected chromedp to re-fetch the SPA page")
 	assert.Contains(t, res.ContentType, "text/html")
 	assert.NotEmpty(t, res.Raw)
+
+	fetcher.CloseBrowser()
 }

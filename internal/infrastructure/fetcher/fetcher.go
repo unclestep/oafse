@@ -8,10 +8,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
-	"sync"
 
-	"github.com/chromedp/cdproto/cdp"
-	"github.com/chromedp/cdproto/fetch"
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
 
@@ -32,16 +29,83 @@ var (
 	}
 
 	noscriptSPAPattern = regexp.MustCompile(`(?i)<noscript>[^<]*javascript`)
+
+	blockedURLs = []*network.BlockPattern{
+		{URLPattern: "*://*/**.jpg", Block: true},
+		{URLPattern: "*://*/**.jpeg", Block: true},
+		{URLPattern: "*://*/**.png", Block: true},
+		{URLPattern: "*://*/**.gif", Block: true},
+		{URLPattern: "*://*/**.webp", Block: true},
+		{URLPattern: "*://*/**.avif", Block: true},
+		{URLPattern: "*://*/**.svg", Block: true},
+		{URLPattern: "*://*/**.ico", Block: true},
+		{URLPattern: "*://*/**.heic", Block: true},
+
+		{URLPattern: "*://*/**.woff", Block: true},
+		{URLPattern: "*://*/**.woff2", Block: true},
+		{URLPattern: "*://*/**.ttf", Block: true},
+		{URLPattern: "*://*/**.eot", Block: true},
+		{URLPattern: "*://*/**.otf", Block: true},
+
+		{URLPattern: "*://*/**.mp4", Block: true},
+		{URLPattern: "*://*/**.mp3", Block: true},
+		{URLPattern: "*://*/**.webm", Block: true},
+		{URLPattern: "*://*/**.ogg", Block: true},
+		{URLPattern: "*://*/**.wav", Block: true},
+		{URLPattern: "*://*/**.mov", Block: true},
+		{URLPattern: "*://*/**.m3u8", Block: true},
+		{URLPattern: "*://*/**.ts", Block: true},
+		{URLPattern: "*://*/**.mpd", Block: true},
+		{URLPattern: "*://*/**.avi", Block: true},
+		{URLPattern: "*://*/**.mkv", Block: true},
+		{URLPattern: "*://*/**.m4s", Block: true},
+
+		{URLPattern: "*://*/**.pdf", Block: true},
+		{URLPattern: "*://*/**.zip", Block: true},
+	}
 )
 
 type Fetcher struct {
 	client *http.Client
+	browser
 }
 
 func NewFetcher(client *http.Client) *Fetcher {
 	return &Fetcher{
-		client: client,
+		client:  client,
+		browser: startChromeBrowser(context.Background()),
 	}
+}
+
+type browser struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
+func startChromeBrowser(parent context.Context) browser {
+	opts := append(
+		chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.Flag("blink-settings", "imagesEnabled=false"),
+		chromedp.Flag("disable-extensions", true),
+		chromedp.Flag("disable-background-networking", true),
+		chromedp.Flag("disable-sync", true),
+		chromedp.Flag("mute-audio", true),
+		chromedp.Flag("disable-software-rasterizer", true),
+		chromedp.Flag("disable-default-apps", true),
+		chromedp.Flag("disable-component-update", true),
+		chromedp.NoSandbox,
+		chromedp.Headless,
+		chromedp.DisableGPU,
+	)
+	browserCtx, browserCancel := chromedp.NewExecAllocator(parent, opts...)
+	return browser{
+		ctx:    browserCtx,
+		cancel: browserCancel,
+	}
+}
+
+func (f *Fetcher) CloseBrowser() {
+	f.cancel()
 }
 
 func isSPA(htmlBytes []byte) bool {
@@ -102,42 +166,12 @@ func (f *Fetcher) Fetch(parent context.Context, u *model.URL) (*port.FetchData, 
 	}
 
 	if isSPA(pageContent) {
-		opts := append(
-			chromedp.DefaultExecAllocatorOptions[:],
-			chromedp.Flag("blink-settings", "imagesEnabled=false"),
-			chromedp.Flag("disable-extensions", true),
-			chromedp.Flag("disable-background-networking", true),
-			chromedp.Flag("disable-sync", true),
-			chromedp.NoSandbox,
-			chromedp.Headless,
-		)
-		allocCtx, cancelAlloc := chromedp.NewExecAllocator(parent, opts...)
-		defer cancelAlloc()
-		chromeCtx, cancelCtx := chromedp.NewContext(allocCtx)
-		defer cancelCtx()
-
-		var wg sync.WaitGroup
-		chromedp.ListenTarget(chromeCtx, blockNonEssentialResources(chromeCtx, &wg))
-
-		var res string
-		err := chromedp.Run(chromeCtx,
-			fetch.Enable().WithPatterns([]*fetch.RequestPattern{
-				{RequestStage: fetch.RequestStageRequest},
-			}),
-			chromedp.Navigate(u.String()),
-			chromedp.WaitVisible("body"),
-			chromedp.OuterHTML(`html`, &res),
-		)
-		wg.Wait()
+		fd, err := f.parseViaChrome(u)
 		if err != nil {
 			return nil, wrap(err)
 		}
-		return &port.FetchData{
-			URL:         u,
-			Status:      port.FetchOK,
-			ContentType: contentType,
-			Raw:         []byte(res),
-		}, nil
+		fd.ContentType = contentType
+		return fd, nil
 	}
 
 	return &port.FetchData{
@@ -148,30 +182,27 @@ func (f *Fetcher) Fetch(parent context.Context, u *model.URL) (*port.FetchData, 
 	}, nil
 }
 
-func blockNonEssentialResources(ctx context.Context, wg *sync.WaitGroup) func(event any) {
-	return func(event any) {
-		ev, ok := event.(*fetch.EventRequestPaused)
-		if !ok {
-			return
-		}
+func (f *Fetcher) parseViaChrome(u *model.URL) (*port.FetchData, error) {
+	tabCtx, tabCancel := chromedp.NewContext(f.ctx)
+	defer tabCancel()
 
-		wg.Go(func() {
-			c := chromedp.FromContext(ctx)
-			execCtx := cdp.WithExecutor(ctx, c.Target)
+	var htmlContent string
+	err := chromedp.Run(tabCtx,
+		network.SetBlockedURLs().WithURLPatterns(blockedURLs),
+		chromedp.Navigate(u.String()),
+		chromedp.WaitVisible("body"),
+		chromedp.OuterHTML(`html`, &htmlContent),
+	)
 
-			blocked := map[network.ResourceType]bool{
-				network.ResourceTypeImage:      true,
-				network.ResourceTypeStylesheet: true,
-				network.ResourceTypeFont:       true,
-				network.ResourceTypeMedia:      true,
-				network.ResourceTypeManifest:   true,
-			}
+	tabCancel() // Get all what we want - no more need to wait
 
-			if blocked[ev.ResourceType] {
-				_ = fetch.FailRequest(ev.RequestID, network.ErrorReasonBlockedByClient).Do(execCtx)
-			} else {
-				_ = fetch.ContinueRequest(ev.RequestID).Do(execCtx)
-			}
-		})
+	if err != nil {
+		return nil, err
 	}
+
+	return &port.FetchData{
+		URL:    u,
+		Status: port.FetchOK,
+		Raw:    []byte(htmlContent),
+	}, nil
 }
