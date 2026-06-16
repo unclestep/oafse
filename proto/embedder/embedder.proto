@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package embedder;
+
+option go_package = "oafse/pkg/proto/embedder";
+
+service Embedder {
+  rpc Embed(EmbedRequest) returns (EmbedResponse);
+  rpc EmbedBatch(EmbedBatchRequest) returns (EmbedBatchResponse);
+}
+
+message EmbedRequest {
+  string text = 1;
+}
+
+message EmbedResponse {
+  repeated float vector = 1;
+}
+
+message EmbedBatchRequest {
+  repeated string texts = 1;
+}
+
+message EmbedBatchResponse {
+  repeated Vector vectors = 1;
+}
+
+message Vector {
+  repeated float values = 1;
+}

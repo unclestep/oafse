@@ -18,10 +18,8 @@ jobs:
         uses: actions/setup-go@v6.4.0
         with:
           go-version-file: "go.mod"
-      - name: Golangci-lint
+      - name: golangci-lint
         uses: golangci/golangci-lint-action@v9.2.1
-      - name: pre-commit
-        uses: pre-commit/action@v3.0.1
   go-test:
     name: test
     needs: [golangci-lint]

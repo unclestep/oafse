@@ -1,5 +1,6 @@
 all:
-	CGO_ENABLED=0 go build -o crawler cmd/main.go
+	CGO_ENABLED=0 go build -o crawler cmd/crawler/main.go
+	CGO_ENABLED=0 go build -o crawler cmd/indexer/main.go
 
 setup:
 	@echo "Setting up Chrome/Chromium for SPA tests..."
@@ -34,4 +35,20 @@ db-check:
 	                -c "SELECT COUNT(*) AS total_pages FROM pages;" \
 	                -c "SELECT COUNT(*) AS total_links FROM links;"
 
-.PHONY: all setup test db-check
+PYTHON := $(shell command -v python3 2>/dev/null || command -v python 2>/dev/null)
+
+proto:
+	protoc \
+		--go_out=pkg/proto/embedder \
+		--go_opt=paths=source_relative \
+		--go-grpc_out=pkg/proto/embedder \
+		--go-grpc_opt=paths=source_relative \
+		--proto_path=proto/embedder \
+		proto/embedder/embedder.proto
+	$(PYTHON) -m grpc_tools.protoc \
+		--python_out=embedder/proto \
+		--grpc_python_out=embedder/proto \
+		--proto_path=proto/embedder \
+		proto/embedder/embedder.proto
+
+.PHONY: all setup test db-check proto

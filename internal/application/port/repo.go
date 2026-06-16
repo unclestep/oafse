@@ -11,6 +11,7 @@ import (
 var (
 	ErrQueueEmpty   = errors.New("queue is empty")
 	ErrPageNotFound = errors.New("page not found")
+	ErrDontWait     = errors.New("dont wait")
 )
 
 type CrawlMetadata struct {
@@ -32,4 +33,6 @@ type URLRepo interface {
 type PageDBRepo interface {
 	SavePage(ctx context.Context, page *model.Page) (int64, error)
 	SaveLink(ctx context.Context, parentURL string, childPageID int64) error
+	GetUnvectorized(ctx context.Context) ([]*model.Page, error)
+	WaitForNotification(ctx context.Context) error
 }

@@ -12,6 +12,7 @@ import (
 	"oafse/internal/delivery/worker"
 	"oafse/internal/domain/model"
 	"oafse/internal/domain/service"
+	"oafse/internal/infrastructure/embedder"
 	"oafse/internal/infrastructure/extractor"
 	"oafse/internal/infrastructure/fetcher"
 	"oafse/internal/infrastructure/storage/ds"
@@ -41,7 +42,7 @@ func NewCrawler(startURL string, resume bool) fx.Option {
 		domainMod,
 		repoMod,
 		dsMod,
-		appMod,
+		crawlAppMod,
 		workerMod,
 		fx.Invoke(func(lc fx.Lifecycle, urlRepo port.URLRepo, cfg *model.CrawlConfig) {
 			var cancel context.CancelFunc
@@ -144,6 +145,9 @@ var dsMod = fx.Module(
 	fx.Provide(func() (postgresStorage.DBTX, error) {
 		return postgresStorage.NewPool(os.Getenv("POSTGRES_DSN"))
 	}),
+	fx.Provide(func() *postgresStorage.NotifyDS {
+		return postgresStorage.NewNotifyDS(os.Getenv("POSTGRES_DSN"))
+	}),
 	fx.Provide(fx.Annotate(
 		postgresStorage.NewPageDS,
 		fx.As(new(ds.PageDBDS)),
@@ -162,7 +166,7 @@ var dsMod = fx.Module(
 	)),
 )
 
-var appMod = fx.Module(
+var crawlAppMod = fx.Module(
 	"application",
 	fx.Provide(fx.Annotate(
 		usecase.NewParse,
@@ -174,3 +178,68 @@ var workerMod = fx.Module(
 	"worker",
 	fx.Provide(worker.NewWorkerPool),
 )
+
+var embedderMod = fx.Module(
+	"embedder",
+	fx.Provide(fx.Annotate(
+		func() (*embedder.Embedder, error) {
+			return embedder.NewEmbedder(os.Getenv("EMBEDDER_DSN"))
+		},
+		fx.As(new(port.Embedder)),
+	)),
+)
+
+var indexAppMod = fx.Module(
+	"index",
+	fx.Provide(fx.Annotate(
+		usecase.NewIndex,
+		fx.As(new(port.IndexUseCase)),
+	)),
+)
+
+func NewIndexer() fx.Option {
+	return fx.Module(
+		"indexer",
+		fx.Provide(func() *model.CrawlConfig {
+			return &model.CrawlConfig{
+				TryLim:          5,
+				TryBaseInterval: 1 * time.Second,
+				WorkersCount:    1,
+			}
+		}),
+		dsMod,
+		repoMod,
+		embedderMod,
+		indexAppMod,
+		fx.Invoke(func(lc fx.Lifecycle, embedder port.Embedder) {
+			lc.Append(fx.Hook{
+				OnStop: func(ctx context.Context) error {
+					return embedder.Close()
+				},
+			})
+		}),
+		fx.Invoke(func(lc fx.Lifecycle, idx *usecase.Index, shutdowner fx.Shutdowner) {
+			var cancel context.CancelFunc
+
+			lc.Append(fx.Hook{
+				OnStart: func(ctx context.Context) error {
+					appCtx, canc := context.WithCancel(context.Background())
+					cancel = canc
+
+					go func() {
+						idx.Execute(appCtx)
+						if err := shutdowner.Shutdown(); err != nil {
+							log.Printf("[ERROR] shutdown: %s", err)
+						}
+					}()
+
+					return nil
+				},
+				OnStop: func(ctx context.Context) error {
+					cancel()
+					return nil
+				},
+			})
+		}),
+	)
+}

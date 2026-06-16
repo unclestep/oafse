@@ -1,6 +1,8 @@
 services:
   oafse-crawler:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.crawler
     container_name: oafse-crawler
     env_file: ".env"
     environment:
@@ -15,6 +17,35 @@ services:
         condition: service_started
       oafse-postgres:
         condition: service_healthy
+
+  oafse-indexer:
+    build:
+      context: .
+      dockerfile: Dockerfile.indexer
+    container_name: oafse-indexer
+    env_file: ".env"
+    environment:
+      POSTGRES_DSN: ${POSTGRES_DOCKER_DSN}
+      REDIS_DSN: ${REDIS_DOCKER_DSN}
+      EMBEDDER_DSN: ${EMBEDDER_DOCKER_DSN}
+    networks:
+      - oafse-net
+    depends_on:
+      oafse-postgres:
+        condition: service_healthy
+      oafse-redis:
+        condition: service_started
+      oafse-embedder:
+        condition: service_started
+
+  oafse-embedder:
+    build:
+      context: ./embedder
+      dockerfile: Dockerfile.embedder
+    container_name: oafse-embedder
+    networks:
+      - oafse-net
+
   oafse-redis:
     image: redis:alpine
     container_name: oafse_redis

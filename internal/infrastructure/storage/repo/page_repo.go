@@ -10,12 +10,14 @@ import (
 )
 
 type PageRepoDB struct {
-	s ds.PageDBDS
+	s      ds.PageDBDS
+	notify ds.PageNotifyDS
 }
 
-func NewPageRepoDB(source ds.PageDBDS) *PageRepoDB {
+func NewPageRepoDB(pageDBDS ds.PageDBDS, pageNotifyDS ds.PageNotifyDS) *PageRepoDB {
 	return &PageRepoDB{
-		s: source,
+		s:      pageDBDS,
+		notify: pageNotifyDS,
 	}
 }
 
@@ -40,4 +42,22 @@ func (r *PageRepoDB) SaveLink(ctx context.Context, parentURL string, childPageID
 		return wrap(err)
 	}
 	return nil
+}
+
+func (r *PageRepoDB) GetUnvectorized(ctx context.Context) ([]*domain.Page, error) {
+	storagePages, err := r.s.GetUnvectorized(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get unvectorized: %w", err)
+	}
+
+	domainPages := make([]*domain.Page, len(storagePages))
+	for i, page := range storagePages {
+		domainPages[i] = mapper.ToDomainPage(page)
+	}
+
+	return domainPages, nil
+}
+
+func (r *PageRepoDB) WaitForNotification(ctx context.Context) error {
+	return r.notify.WaitForNotification(ctx)
 }

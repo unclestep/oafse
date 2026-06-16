@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
 	storage "oafse/internal/infrastructure/storage/model"
 )
 
@@ -75,13 +77,14 @@ func (s *PageDS) PageExists(ctx context.Context, url string) (bool, error) {
 
 func (s *PageDS) InsertPage(ctx context.Context, page *storage.PageDB) (int64, error) {
 	sql := `
-		INSERT INTO pages (url, title, description, content, crawled_at)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO pages (url, title, description, content, crawled_at, vector)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		ON CONFLICT (url) DO UPDATE SET
 			title = EXCLUDED.title,
 			description = EXCLUDED.description,
 			content = EXCLUDED.content,
-			crawled_at = EXCLUDED.crawled_at
+			crawled_at = EXCLUDED.crawled_at,
+			vector = EXCLUDED.vector
 		RETURNING id
 	`
 
@@ -90,7 +93,7 @@ func (s *PageDS) InsertPage(ctx context.Context, page *storage.PageDB) (int64, e
 
 	var pageID int64
 
-	err := s.dbtx.QueryRow(ctx, sql, page.URL, page.Title, page.Description, page.Content, page.CrawledAt).Scan(&pageID)
+	err := s.dbtx.QueryRow(ctx, sql, page.URL, page.Title, page.Description, page.Content, page.CrawledAt, page.Vector).Scan(&pageID)
 	if err != nil {
 		return -1, fmt.Errorf("insert page: %w", err)
 	}
@@ -114,4 +117,27 @@ func (s *PageDS) InsertLink(ctx context.Context, parentURL string, childPageID i
 	}
 
 	return nil
+}
+
+func (s *PageDS) GetUnvectorized(ctx context.Context) ([]*storage.PageDB, error) {
+	sql := `
+		SELECT url, title, description, content, crawled_at, vector
+		FROM pages
+		WHERE vector IS NULL
+	`
+
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	rows, err := s.dbtx.Query(ctx, sql)
+	if err != nil {
+		return nil, fmt.Errorf("get unvectorized: %w", err)
+	}
+
+	pages, err := pgx.CollectRows(rows, pgx.RowToAddrOfStructByPos[storage.PageDB])
+	if err != nil {
+		return nil, fmt.Errorf("get unvectorized: %w", err)
+	}
+
+	return pages, err
 }
