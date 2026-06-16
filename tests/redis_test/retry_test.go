@@ -6,6 +6,7 @@ import (
 
 	redis "github.com/redis/go-redis/v9"
 
+	storage "oafse/internal/infrastructure/storage/model"
 	sredis "oafse/internal/infrastructure/storage/redis"
 )
 
@@ -33,12 +34,12 @@ func (s *RedisSuite) TestEnqueueURLsBasic() {
 	if !s.NoError(err) {
 		return
 	}
-	s.Equal(sredis.StatusQueue, info.Status)
+	s.Equal(storage.QueuedCrawlStatus, info.Status)
 	s.Equal(1, info.Try)
 
 	info2, err := s.curator.GetURLInfo(context.Background(), "URL2")
 	s.NoError(err)
-	s.Equal(sredis.StatusRetry, info2.Status)
+	s.Equal(storage.RetryCrawlStatus, info2.Status)
 
 	// Idempotent
 	remain, err = s.curator.EnqueueURLs(context.Background())
@@ -80,5 +81,5 @@ func (s *RedisSuite) TestEnqueueURLsNoStatusEntry() {
 
 	info, err := s.curator.GetURLInfo(context.Background(), "ORPHAN")
 	s.NoError(err)
-	s.Equal(sredis.StatusQueue, info.Status)
+	s.Equal(storage.QueuedCrawlStatus, info.Status)
 }

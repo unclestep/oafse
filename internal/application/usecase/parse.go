@@ -42,7 +42,7 @@ func (uc *Parse) Execute(ctx context.Context, workerID string) (*port.ParseCmd, 
 
 		log.Printf("[WARN] parse use case: give up %s because of: %s", url.String(), err)
 
-		if err := uc.urlRepo.MarkProcessed(cleanupCtx, url.String(), model.DoneCrawlStatus); err != nil {
+		if err := uc.urlRepo.MarkProcessed(cleanupCtx, url.String(), model.GiveUpCrawlStatus); err != nil {
 			return nil, wrap(err)
 		}
 		return nil, nil
@@ -109,15 +109,16 @@ func (uc *Parse) Execute(ctx context.Context, workerID string) (*port.ParseCmd, 
 	}
 
 	if len(links) != 0 {
-		pushed, err := uc.urlRepo.PushURLs(ctx, links)
-		if len(pushed) != len(links) {
-			log.Printf("[WARN] input: %d urls, pushed: %d urls", len(links), len(pushed))
-		}
-		if err != nil {
+		if _, err := uc.urlRepo.PushURLs(ctx, links); err != nil {
 			return giveUp(url, err)
 		}
 	}
 
-	log.Printf("[SUCCESS] page %s is successfully parsed", page.URL)
+	err = uc.urlRepo.MarkProcessed(ctx, url.String(), model.DoneCrawlStatus)
+	if err != nil {
+		return giveUp(url, err)
+	}
+
+	log.Printf("[INFO] page %s is successfully parsed", page.URL)
 	return nil, nil
 }

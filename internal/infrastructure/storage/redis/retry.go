@@ -37,7 +37,7 @@ var enqueueURLsScript = redis.NewScript(`
 		local info
 		if not binInfo then
 			info = {
-				status = newStatus,
+				status = tonumber(newStatus),
 				worker_id = "",
 				try = 1,
 				take_on_at = -1,
@@ -47,7 +47,7 @@ var enqueueURLsScript = redis.NewScript(`
 			info = cjson.decode(binInfo)
 		end
 
-		info['status'] = newStatus
+		info['status'] = tonumber(newStatus)
 		local newBinInfo = cjson.encode(info)
 		redis.call('HSET', keyURLStatus, urls[i], newBinInfo)
 		redis.call('LPUSH', keyQueue, urls[i])
@@ -60,7 +60,7 @@ func (r *Retry) EnqueueURLs(ctx context.Context) (int64, error) {
 	remaining, err := enqueueURLsScript.Run(
 		ctx, r.rdb,
 		[]string{KeyRetry, KeyURLStatus, KeyQueue},
-		time.Now().UnixMilli(), storage.QueuedCrawlStatus,
+		time.Now().UnixMilli(), int(storage.QueuedCrawlStatus),
 	).Int64()
 	if err != nil && err != redis.Nil {
 		return 0, fmt.Errorf("enqueue retry urls: %w", err)

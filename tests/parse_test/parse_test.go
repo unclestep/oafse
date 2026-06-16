@@ -23,6 +23,7 @@ import (
 	"oafse/internal/domain/service"
 	"oafse/internal/infrastructure/extractor"
 	"oafse/internal/infrastructure/fetcher"
+	storage "oafse/internal/infrastructure/storage/model"
 	pg "oafse/internal/infrastructure/storage/postgres"
 	sredis "oafse/internal/infrastructure/storage/redis"
 	"oafse/internal/infrastructure/storage/repo"
@@ -115,9 +116,29 @@ func (s *ParseSuite) newUseCaseWithConfig(client *http.Client, cfg *model.CrawlC
 
 	pageRepo := repo.NewPageRepoDB(s.pageDS)
 	urlRepo := repo.NewURLRepoCache(s.urlDS)
-	crawlRepo := repo.NewCrawlRepo(urlRepo, pageRepo)
 
-	return usecase.NewParse(cfg, crawlRepo, proc, fetch, ext)
+	return usecase.NewParse(cfg, pageRepo, urlRepo, proc, fetch, ext)
+}
+
+func (s *ParseSuite) childLinks(ctx context.Context, parentURL string) []string {
+	rows, err := s.tx.Query(ctx, `
+		SELECT child.url
+		FROM links l
+		JOIN pages parent ON parent.id = l.src_page_id
+		JOIN pages child ON child.id = l.dst_page_id
+		WHERE parent.url = $1
+	`, parentURL)
+	s.Require().NoError(err)
+	defer rows.Close()
+
+	var urls []string
+	for rows.Next() {
+		var u string
+		s.Require().NoError(rows.Scan(&u))
+		urls = append(urls, u)
+	}
+	s.Require().NoError(rows.Err())
+	return urls
 }
 
 func (s *ParseSuite) TestExecuteParsesPageAndStoresResult() {
@@ -159,31 +180,41 @@ func (s *ParseSuite) TestExecuteParsesPageAndStoresResult() {
 	ctx := context.Background()
 	s.Require().NoError(s.urlDS.Start(ctx, ts.URL))
 
-	cmd, err := s.newUseCase(ts.Client()).Execute(ctx, "worker-0")
+	uc := s.newUseCase(ts.Client())
+
+	cmd, err := uc.Execute(ctx, "worker-0")
 	s.Require().NoError(err)
 	s.Nil(cmd, "successful parse must return nil cmd")
 
 	// Redis: source URL must be marked processed
 	info, err := s.urlDS.GetURLInfo(ctx, ts.URL)
 	s.Require().NoError(err)
-	s.Equal(sredis.StatusProcessed, info.Status)
+	s.Equal(storage.DoneCrawlStatus, info.Status)
 
 	// Redis: each discovered internal link must be enqueued for crawling
 	for _, link := range internalLinks {
 		linkInfo, err := s.urlDS.GetURLInfo(ctx, link)
 		s.Require().NoError(err, "link %s must be present in Redis", link)
-		s.Equal(sredis.StatusQueue, linkInfo.Status, "link %s must have queue status", link)
+		s.Equal(storage.QueuedCrawlStatus, linkInfo.Status, "link %s must have queue status", link)
 	}
 
-	// Postgres: page saved with correct metadata
+	// Postgres: page saved with correct metadata under its (final) URL
 	page, err := s.pageDS.GetPage(ctx, ts.URL)
 	s.Require().NoError(err)
 	s.Equal(ts.URL, page.URL)
 	s.Equal("Web Crawlers", page.Title)
 	s.NotEmpty(page.Content)
 
+	// Links are only recorded once the child itself is crawled (it looks up its
+	// parent's already-saved row), so crawl the discovered children too.
+	for range internalLinks {
+		cmd, err := uc.Execute(ctx, "worker-0")
+		s.Require().NoError(err)
+		s.Nil(cmd)
+	}
+
 	// Postgres: links table contains exactly the internal links (extractor filters external)
-	s.ElementsMatch(internalLinks, page.Links)
+	s.ElementsMatch(internalLinks, s.childLinks(ctx, ts.URL))
 }
 
 func (s *ParseSuite) TestExecuteEmptyQueueReturnsStop() {
@@ -209,7 +240,7 @@ func (s *ParseSuite) TestExecuteServerErrorRetriesURL() {
 
 	info, err := s.urlDS.GetURLInfo(ctx, ts.URL)
 	s.Require().NoError(err)
-	s.Equal(sredis.StatusRetry, info.Status)
+	s.Equal(storage.RetryCrawlStatus, info.Status)
 	s.Equal(1, info.Try)
 }
 
@@ -228,7 +259,7 @@ func (s *ParseSuite) TestExecutePermanentErrorGivesUpURL() {
 
 	info, err := s.urlDS.GetURLInfo(ctx, ts.URL)
 	s.Require().NoError(err)
-	s.Equal(sredis.StatusFailure, info.Status)
+	s.Equal(storage.GiveUpCrawlStatus, info.Status)
 }
 
 func (s *ParseSuite) TestExecuteRetryLimitExceededGivesUpURL() {
@@ -254,7 +285,7 @@ func (s *ParseSuite) TestExecuteRetryLimitExceededGivesUpURL() {
 
 	info, err := s.urlDS.GetURLInfo(ctx, ts.URL)
 	s.Require().NoError(err)
-	s.Equal(sredis.StatusRetry, info.Status)
+	s.Equal(storage.RetryCrawlStatus, info.Status)
 	s.Equal(1, info.Try)
 
 	time.Sleep(150 * time.Millisecond)
@@ -265,7 +296,7 @@ func (s *ParseSuite) TestExecuteRetryLimitExceededGivesUpURL() {
 
 	info, err = s.urlDS.GetURLInfo(ctx, ts.URL)
 	s.Require().NoError(err)
-	s.Equal(sredis.StatusFailure, info.Status)
+	s.Equal(storage.GiveUpCrawlStatus, info.Status)
 }
 
 func (s *ParseSuite) TestExecuteEmptyQueueWithProcessingReturnsSleep() {
@@ -302,7 +333,7 @@ func (s *ParseSuite) TestExecuteEmptyQueueWithRetryReturnsSleep() {
 
 	info, err := s.urlDS.GetURLInfo(ctx, ts.URL)
 	s.Require().NoError(err)
-	s.Equal(sredis.StatusRetry, info.Status)
+	s.Equal(storage.RetryCrawlStatus, info.Status)
 
 	// Immediate second execute: queue empty, retry not ready yet -> DirectiveSleep
 	// SleepFor reflects the time until EarliestRetry
@@ -341,7 +372,7 @@ func (s *ParseSuite) TestExecuteDuplicateLinksQueuedOnce() {
 	// /about must be enqueued exactly once despite appearing three times in HTML
 	linkInfo, err := s.urlDS.GetURLInfo(ctx, ts.URL+"/about")
 	s.Require().NoError(err)
-	s.Equal(sredis.StatusQueue, linkInfo.Status)
+	s.Equal(storage.QueuedCrawlStatus, linkInfo.Status)
 
 	// Total Redis entries: root URL (processed) + /about (queued) = 2
 	count, err := s.rdb.HLen(ctx, sredis.KeyURLStatus).Result()
@@ -380,6 +411,52 @@ func (s *ParseSuite) TestExecuteExternalLinksNotQueued() {
 
 	_, err = s.urlDS.GetURLInfo(ctx, "https://external.example.com")
 	s.Error(err, "external URL must be absent from Redis")
+}
+
+func (s *ParseSuite) TestExecuteRedirectStoresFinalURLInPostgres() {
+	final := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`
+		<!DOCTYPE html>
+		<html>
+		<head><title>Final Destination</title></head>
+		<body>
+		<article>
+		<p>Content long enough to pass the readability character threshold so that the
+		parser identifies this article node and extracts a non-empty body of text from it.</p>
+		</article>
+		</body>
+		</html>`))
+	}))
+	defer final.Close()
+
+	initial := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, final.URL, http.StatusMovedPermanently)
+	}))
+	defer initial.Close()
+
+	ctx := context.Background()
+	s.Require().NoError(s.urlDS.Start(ctx, initial.URL))
+
+	cmd, err := s.newUseCase(initial.Client()).Execute(ctx, "worker-0")
+	s.Require().NoError(err)
+	s.Nil(cmd)
+
+	// Redis must mark the initial (pre-redirect) URL as done - that's the only
+	// URL identity known before the page was ever fetched.
+	info, err := s.urlDS.GetURLInfo(ctx, initial.URL)
+	s.Require().NoError(err)
+	s.Equal(storage.DoneCrawlStatus, info.Status)
+
+	// Postgres must store the page under the final (post-redirect) URL.
+	page, err := s.pageDS.GetPage(ctx, final.URL)
+	s.Require().NoError(err)
+	s.Equal(final.URL, page.URL)
+	s.Equal("Final Destination", page.Title)
+
+	_, err = s.pageDS.GetPage(ctx, initial.URL)
+	s.Error(err, "the pre-redirect URL must not have its own row in postgres")
 }
 
 func TestParseSuite(t *testing.T) {

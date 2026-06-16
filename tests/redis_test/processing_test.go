@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"oafse/internal/application/port"
+	storage "oafse/internal/infrastructure/storage/model"
 	sredis "oafse/internal/infrastructure/storage/redis"
 )
 
@@ -56,7 +57,7 @@ func (s *RedisSuite) TestRetryURL() {
 			return
 		}
 
-		s.Equal(sredis.StatusRetry, info.Status)
+		s.Equal(storage.RetryCrawlStatus, info.Status)
 		s.Equal(1, info.Try)
 		s.Equal(retryTime.UnixMilli(), info.RetryAt)
 
@@ -91,7 +92,7 @@ func (s *RedisSuite) TestRetryURLConcurrent() {
 					return
 				}
 
-				s.Equal(sredis.StatusProcessing, info.Status, "URL Status")
+				s.Equal(storage.ProcessingCrawlStatus, info.Status, "URL Status")
 				s.Equal(workerID, info.WorkerID, "Worker ID")
 				s.Greater(info.TakeOnAt, time.Now().UnixMilli()-time.Minute.Milliseconds(), "Processing Start Time")
 			}
@@ -116,7 +117,7 @@ func (s *RedisSuite) TestRetryURLConcurrent() {
 					return
 				}
 
-				s.Equal(sredis.StatusRetry, info.Status)
+				s.Equal(storage.RetryCrawlStatus, info.Status)
 				s.Equal(1, info.Try)
 				s.Equal(retryTime.UnixMilli(), info.RetryAt)
 			}
@@ -144,23 +145,26 @@ func (s *RedisSuite) TestMarkProcessed() {
 		{"1", "2", "3"},
 	}
 
-	tests := [][]string{
-		{string(sredis.StatusProcessed), "1"},
-		{string(sredis.StatusFailure), "2"},
-		{string(sredis.StatusManual), "3"},
+	tests := []struct {
+		status storage.CrawlStatus
+		url    string
+	}{
+		{storage.DoneCrawlStatus, "1"},
+		{storage.GiveUpCrawlStatus, "2"},
+		{storage.ManualCrawlStatus, "3"},
 	}
 
 	s.prepareProcessingQueue(urls)
 
 	for i := range len(tests) {
-		s.Run(fmt.Sprintf("%s -> %s", tests[i][1], tests[i][0]), func() {
-			err := s.curator.MarkProcessed(context.Background(), tests[i][1], sredis.URLStatus(tests[i][0]))
+		s.Run(fmt.Sprintf("%s -> %d", tests[i].url, tests[i].status), func() {
+			err := s.curator.MarkProcessed(context.Background(), tests[i].url, tests[i].status)
 			s.NoError(err)
 
-			info, err := s.curator.GetURLInfo(context.Background(), tests[i][1])
+			info, err := s.curator.GetURLInfo(context.Background(), tests[i].url)
 			s.NoError(err)
 
-			s.Equal(sredis.URLStatus(tests[i][0]), info.Status)
+			s.Equal(tests[i].status, info.Status)
 		})
 	}
 
@@ -173,7 +177,7 @@ func (s *RedisSuite) TestMarkProcessed() {
 	s.Equal(int64(0), scard)
 
 	s.Run("Nonexistent URL", func() {
-		err := s.curator.MarkProcessed(context.Background(), "NOURL", sredis.StatusProcessed)
+		err := s.curator.MarkProcessed(context.Background(), "NOURL", storage.DoneCrawlStatus)
 		s.Error(err)
 	})
 }
@@ -187,7 +191,7 @@ func (s *RedisSuite) TestRecoverSuite() {
 
 		info, err := s.curator.GetURLInfo(context.Background(), "NEWURL")
 		s.NoError(err)
-		s.Equal(sredis.StatusQueue, info.Status)
+		s.Equal(storage.QueuedCrawlStatus, info.Status)
 		s.Equal("", info.WorkerID)
 		s.Equal(0, info.Try)
 
@@ -207,7 +211,7 @@ func (s *RedisSuite) TestRecoverSuite() {
 
 		info, err := s.curator.GetURLInfo(context.Background(), "URL")
 		s.NoError(err)
-		s.Equal(sredis.StatusQueue, info.Status)
+		s.Equal(storage.QueuedCrawlStatus, info.Status)
 
 		queueLen, err := s.rdb.LLen(context.Background(), sredis.KeyQueue).Result()
 		s.NoError(err)
@@ -241,7 +245,7 @@ func (s *RedisSuite) TestRecoverURLConcurrent() {
 
 				info, err := s.curator.GetURLInfo(context.Background(), url)
 				s.NoError(err)
-				s.Equal(sredis.StatusQueue, info.Status)
+				s.Equal(storage.QueuedCrawlStatus, info.Status)
 			}
 		}(i)
 	}
@@ -298,7 +302,7 @@ func (s *RedisSuite) TestHealthCheck() {
 			return
 		}
 
-		s.Equal(sredis.StatusQueue, info.Status)
+		s.Equal(storage.QueuedCrawlStatus, info.Status)
 	})
 
 	s.Run("Less than threshold", func() {
@@ -331,7 +335,7 @@ func (s *RedisSuite) TestHealthCheck() {
 			return
 		}
 
-		s.Equal(sredis.StatusProcessing, info.Status)
+		s.Equal(storage.ProcessingCrawlStatus, info.Status)
 	})
 
 	s.Run("Greater than threshold", func() {
@@ -365,7 +369,7 @@ func (s *RedisSuite) TestHealthCheck() {
 			return
 		}
 
-		s.Equal(sredis.StatusQueue, info.Status)
+		s.Equal(storage.QueuedCrawlStatus, info.Status)
 	})
 
 	s.Run("SScan pagination", func() {

@@ -117,7 +117,7 @@ func (s *URLDS) RetryURL(ctx context.Context, url string, retryAt time.Time) err
 }
 
 func (s *URLDS) MarkProcessed(ctx context.Context, url string, status storage.CrawlStatus) error {
-	return s.MarkProcessed(ctx, url, status)
+	return s.Processing.MarkProcessed(ctx, url, status)
 }
 
 var getCrawlMetadataScript = redis.NewScript(`

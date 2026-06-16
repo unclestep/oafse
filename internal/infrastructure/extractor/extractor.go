@@ -33,9 +33,9 @@ func (e *Extractor) Extract(fetchData *port.FetchData) (*model.Page, []*model.UR
 		return nil, nil, wrap(err)
 	}
 
-	links := e.extractLinks(doc, fetchData.URL)
+	links := e.extractLinks(doc, fetchData.FinalURL)
 
-	art, err := e.parser.Parse(bytes.NewReader(fetchData.Raw), fetchData.URL.URL)
+	art, err := e.parser.Parse(bytes.NewReader(fetchData.Raw), fetchData.FinalURL.URL)
 	if err != nil {
 		return nil, nil, wrap(err)
 	}
@@ -52,7 +52,7 @@ func (e *Extractor) Extract(fetchData *port.FetchData) (*model.Page, []*model.UR
 	}
 
 	return &model.Page{
-		URL:         fetchData.URL.String(),
+		URL:         fetchData.FinalURL.String(),
 		Title:       title,
 		Description: description,
 		Content:     content,

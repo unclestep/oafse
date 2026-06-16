@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"oafse/internal/application/port"
+	storage "oafse/internal/infrastructure/storage/model"
 	sredis "oafse/internal/infrastructure/storage/redis"
 )
 
@@ -21,13 +22,13 @@ func (s *RedisSuite) TestQueuePushURL() {
 	for _, url := range urls {
 		subtestName := fmt.Sprintf("Queue push URL: %s", url)
 		s.Run(subtestName, func() {
-			ok, err := s.curator.PushURL(context.Background(), url)
+			ok, err := s.curator.PushURL(context.Background(), &storage.URLCache{URL: url})
 			s.NoError(err)
 			s.True(ok)
 
 			info, err := s.curator.GetURLInfo(context.Background(), url)
 			s.NoError(err)
-			s.Equal(sredis.StatusQueue, info.Status)
+			s.Equal(storage.QueuedCrawlStatus, info.Status)
 		})
 	}
 
@@ -36,7 +37,7 @@ func (s *RedisSuite) TestQueuePushURL() {
 	for _, url := range urls {
 		subtestName := fmt.Sprintf("Queue push same URL: %s", url)
 		s.Run(subtestName, func() {
-			ok, err := s.curator.PushURL(context.Background(), url)
+			ok, err := s.curator.PushURL(context.Background(), &storage.URLCache{URL: url})
 			s.NoError(err)
 			s.False(ok)
 		})
@@ -55,7 +56,7 @@ func (s *RedisSuite) TestQueuePushURLConcurrent() {
 	for range WorkersCount {
 		go func() {
 			defer wg.Done()
-			ok, err := s.curator.PushURL(context.Background(), url)
+			ok, err := s.curator.PushURL(context.Background(), &storage.URLCache{URL: url})
 			s.NoError(err)
 			if ok {
 				okPushed.Add(1)
@@ -78,7 +79,7 @@ func (s *RedisSuite) TestQueuePushURLsConcurrent() {
 	for i := range g {
 		go func(i int) {
 			defer wg.Done()
-			pushed, err := s.curator.PushURLs(context.Background(), urls[i])
+			pushed, err := s.curator.PushURLs(context.Background(), toURLCaches(urls[i]))
 			if !s.NoError(err) {
 				return
 			}
@@ -88,7 +89,7 @@ func (s *RedisSuite) TestQueuePushURLsConcurrent() {
 			}
 
 			s.Equal(len(urls[i]), len(pushed))
-			s.ElementsMatch(urls[i], pushed)
+			s.ElementsMatch(urls[i], urlCacheURLs(pushed))
 		}(i)
 	}
 	wg.Wait()
@@ -121,7 +122,7 @@ func (s *RedisSuite) TestTakeOnConcurrent() {
 					return
 				}
 
-				s.Equal(sredis.StatusProcessing, info.Status, "Workers Processing Queue")
+				s.Equal(storage.ProcessingCrawlStatus, info.Status, "Workers Processing Queue")
 				s.Equal(workerID, info.WorkerID, "Workers ID")
 				s.Greater(info.TakeOnAt, time.Now().UnixMilli()-time.Minute.Milliseconds(), "Processing Start Time")
 			}

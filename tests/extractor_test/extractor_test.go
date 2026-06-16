@@ -21,6 +21,14 @@ func mustURL(t *testing.T, raw string) *model.URL {
 	return u
 }
 
+func linkStrings(links []*model.URL) []string {
+	urls := make([]string, len(links))
+	for i, l := range links {
+		urls[i] = l.String()
+	}
+	return urls
+}
+
 func TestExtractorExtract(t *testing.T) {
 	parser := read.NewParser()
 	parser.CharThresholds = 0
@@ -52,8 +60,9 @@ func TestExtractorExtract(t *testing.T) {
 		</body>
 		</html>`)
 
-		page, err := e.Extract(&port.FetchData{
+		page, links, err := e.Extract(&port.FetchData{
 			URL:         base,
+			FinalURL:    base,
 			Status:      port.FetchOK,
 			ContentType: "text/html",
 			Raw:         raw,
@@ -65,9 +74,13 @@ func TestExtractorExtract(t *testing.T) {
 		assert.NotEmpty(t, page.Content)
 		assert.NotEmpty(t, page.Description)
 
-		require.Len(t, page.Links, 2, "only same-domain links expected")
-		assert.Contains(t, page.Links, "https://example.com/articles/concurrency")
-		assert.Contains(t, page.Links, "https://example.com/articles/interfaces")
+		require.Len(t, links, 2, "only same-domain links expected")
+		urls := linkStrings(links)
+		assert.Contains(t, urls, "https://example.com/articles/concurrency")
+		assert.Contains(t, urls, "https://example.com/articles/interfaces")
+		for _, l := range links {
+			assert.Equal(t, base.String(), l.Parent, "link parent should be the page's final URL")
+		}
 	})
 
 	t.Run("LeafNode", func(t *testing.T) {
@@ -86,8 +99,9 @@ func TestExtractorExtract(t *testing.T) {
 		</body>
 		</html>`)
 
-		page, err := e.Extract(&port.FetchData{
+		page, links, err := e.Extract(&port.FetchData{
 			URL:         base,
+			FinalURL:    base,
 			Status:      port.FetchOK,
 			ContentType: "text/html",
 			Raw:         raw,
@@ -97,7 +111,7 @@ func TestExtractorExtract(t *testing.T) {
 
 		assert.Equal(t, "Terminal Page", page.Title)
 		assert.NotEmpty(t, page.Content)
-		assert.Empty(t, page.Links)
+		assert.Empty(t, links)
 	})
 
 	t.Run("BrokenHTML", func(t *testing.T) {
@@ -119,8 +133,9 @@ func TestExtractorExtract(t *testing.T) {
 		</article>
 		</body>`)
 
-		page, err := e.Extract(&port.FetchData{
+		page, links, err := e.Extract(&port.FetchData{
 			URL:         base,
+			FinalURL:    base,
 			Status:      port.FetchOK,
 			ContentType: "text/html",
 			Raw:         raw,
@@ -129,8 +144,8 @@ func TestExtractorExtract(t *testing.T) {
 		require.NotNil(t, page)
 
 		assert.NotEmpty(t, page.Content)
-		for _, l := range page.Links {
-			u, err := url.Parse(l)
+		for _, l := range links {
+			u, err := url.Parse(l.String())
 			require.NoError(t, err)
 			assert.Equal(t, base.Hostname(), u.Hostname(), "only same-domain links: %s", l)
 		}
@@ -146,8 +161,9 @@ func TestExtractorExtract(t *testing.T) {
 		Modern crawlers must also handle JavaScript-rendered content, dynamic pagination,
 		and anti-bot measures. Politeness policies ensure crawlers do not overload servers.`)
 
-		page, err := e.Extract(&port.FetchData{
+		page, links, err := e.Extract(&port.FetchData{
 			URL:         base,
+			FinalURL:    base,
 			Status:      port.FetchOK,
 			ContentType: "text/plain",
 			Raw:         raw,
@@ -158,7 +174,7 @@ func TestExtractorExtract(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, page)
 		assert.Empty(t, page.Content)
-		assert.Empty(t, page.Links)
+		assert.Empty(t, links)
 	})
 
 	t.Run("Markdown", func(t *testing.T) {
@@ -187,8 +203,9 @@ func TestExtractorExtract(t *testing.T) {
 		Politeness policies ensure crawlers do not overload target servers with
 		excessive request rates or concurrent connections.`)
 
-		page, err := e.Extract(&port.FetchData{
+		page, links, err := e.Extract(&port.FetchData{
 			URL:         base,
+			FinalURL:    base,
 			Status:      port.FetchOK,
 			ContentType: "text/markdown",
 			Raw:         raw,
@@ -199,6 +216,42 @@ func TestExtractorExtract(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, page)
 		assert.Empty(t, page.Content)
-		assert.Empty(t, page.Links)
+		assert.Empty(t, links)
+	})
+
+	t.Run("RedirectFinalURL", func(t *testing.T) {
+		initial := mustURL(t, "http://example.com")
+		final := mustURL(t, "https://example.com/landing")
+
+		raw := []byte(`
+		<!DOCTYPE html>
+		<html>
+		<head><title>Landed</title></head>
+		<body>
+		<article>
+			<h1>Landed</h1>
+			<p>Content long enough to pass the readability character threshold so that the
+			parser identifies this article node and extracts a non-empty body of text from it.</p>
+			<a href="/next">Next page</a>
+		</article>
+		</body>
+		</html>`)
+
+		page, links, err := e.Extract(&port.FetchData{
+			URL:         initial,
+			FinalURL:    final,
+			Status:      port.FetchOK,
+			ContentType: "text/html",
+			Raw:         raw,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, page)
+
+		// Postgres must only ever see the post-redirect URL, never the pre-redirect one.
+		assert.Equal(t, final.String(), page.URL)
+
+		require.Len(t, links, 1)
+		assert.Equal(t, "https://example.com/next", links[0].String())
+		assert.Equal(t, final.String(), links[0].Parent, "discovered link's parent must be the final URL")
 	})
 }

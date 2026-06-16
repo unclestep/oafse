@@ -17,10 +17,13 @@ import (
 
 func main() {
 	startURL := flag.String("u", "https://quotes.toscrape.com", "Start URL for crawling")
-	resume := flag.Bool("resume", true, "Resume crawling")
+	resume := flag.Bool("resume", false, "Resume crawling")
 	flag.Parse()
 
 	_ = godotenv.Load(".env")
+	fallbackEnv("POSTGRES_DSN", "POSTGRES_LOCAL_DSN")
+	fallbackEnv("REDIS_DSN", "REDIS_LOCAL_DSN")
+
 	if err := postgres.Migrate(os.Getenv("POSTGRES_DSN")); err != nil {
 		log.Fatalf("migration failed: %s", err)
 	}
@@ -31,6 +34,12 @@ func main() {
 	}
 
 	fx.New(di.NewCrawler(baseURL, *resume)).Run()
+}
+
+func fallbackEnv(key, fallbackKey string) {
+	if os.Getenv(key) == "" {
+		_ = os.Setenv(key, os.Getenv(fallbackKey))
+	}
 }
 
 func normalizeStartURL(raw string) (string, error) {

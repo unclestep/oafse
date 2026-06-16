@@ -12,5 +12,3 @@ CREATE TABLE IF NOT EXISTS links(
     dst_page_id BIGINT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
     PRIMARY KEY(src_page_id, dst_page_id)
 );
-
-CREATE INDEX IF NOT EXISTS idx_url ON pages(url);

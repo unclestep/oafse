@@ -49,7 +49,7 @@ var retryURLScript = redis.NewScript(`
 	local info = cjson.decode(oldJSON)
 
 	local keyProcessingQueue = prefixProcessingQueue .. ':' .. info['worker_id']
-	info['status'] = newStatus
+	info['status'] = tonumber(newStatus)
 	info['try'] = info['try'] + 1
 	info['retry_at'] = tonumber(retryAt)
 
@@ -67,7 +67,7 @@ func (p *Processing) RetryURL(ctx context.Context, url string, nextRetryTime tim
 	err := retryURLScript.Run(
 		ctx, p.rdb,
 		[]string{KeyURLStatus, KeyProcessingIndex, KeyRetry},
-		url, PrefixProcessingQueue, storage.RetryCrawlStatus, nextRetryTime.UnixMilli(),
+		url, PrefixProcessingQueue, int(storage.RetryCrawlStatus), nextRetryTime.UnixMilli(),
 	).Err()
 	if err != nil {
 		return fmt.Errorf("retry url: %w", err)
@@ -89,7 +89,7 @@ var markProcessedScript = redis.NewScript(`
 	local info = cjson.decode(oldJSON)
 
 	local keyProcessingQueue = prefixProcessingQueue .. ':' .. info['worker_id']
-	info['status'] = newStatus
+	info['status'] = tonumber(newStatus)
 
 	local newJSON = cjson.encode(info)
 
@@ -104,7 +104,7 @@ func (p *Processing) MarkProcessed(ctx context.Context, url string, status stora
 	err := markProcessedScript.Run(
 		ctx, p.rdb,
 		[]string{KeyURLStatus, KeyProcessingIndex},
-		url, PrefixProcessingQueue, status,
+		url, PrefixProcessingQueue, int(status),
 	).Err()
 	if err != nil {
 		return fmt.Errorf("mark processed: %w", err)
@@ -124,7 +124,7 @@ var recoverScript = redis.NewScript(`
 
 	if not oldJSON then
 		local info = {
-			status = newStatus,
+			status = tonumber(newStatus),
 			worker_id = "",
 			try = 0,
 			take_on_at = -1,
@@ -140,7 +140,7 @@ var recoverScript = redis.NewScript(`
 	end
 
 	local info = cjson.decode(oldJSON)
-	info['status'] = newStatus
+	info['status'] = tonumber(newStatus)
 	local newJSON = cjson.encode(info)
 
 	redis.call('HSET', keyURLStatus, url, newJSON)
@@ -155,7 +155,7 @@ func (p *Processing) RecoverURL(ctx context.Context, url string) error {
 	err := recoverScript.Run(
 		ctx, p.rdb,
 		[]string{KeyURLStatus, KeyProcessingIndex, KeyQueue},
-		url, PrefixProcessingQueue, storage.QueuedCrawlStatus,
+		url, PrefixProcessingQueue, int(storage.QueuedCrawlStatus),
 	).Err()
 	if err != nil {
 		return fmt.Errorf("recover url: %w", err)

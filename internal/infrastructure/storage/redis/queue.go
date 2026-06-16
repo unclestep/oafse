@@ -36,7 +36,7 @@ var popURLScript = redis.NewScript(`
 	local oldJSON = redis.call('HGET', keyURLStatus, url)
 	local info = cjson.decode(oldJSON)
 
-	info['status'] = newStatus
+	info['status'] = tonumber(newStatus)
 	info['worker_id'] = workerID
 	info['take_on_at'] = tonumber(takeOnAt)
 
@@ -54,7 +54,7 @@ func (q *Queue) TakeOn(ctx context.Context, workerID string) (*storage.URLCache,
 	vals, err := popURLScript.Run(
 		ctx, q.rdb,
 		[]string{KeyQueue, KeyURLStatus, keyProcessingQueue, KeyProcessingIndex},
-		workerID, time.Now().UnixMilli(), storage.ProcessingCrawlStatus,
+		workerID, time.Now().UnixMilli(), int(storage.ProcessingCrawlStatus),
 	).Slice()
 	if err == redis.Nil {
 		return nil, port.ErrQueueEmpty
@@ -75,7 +75,7 @@ func (q *Queue) TakeOn(ctx context.Context, workerID string) (*storage.URLCache,
 
 	parent, ok := vals[2].(string)
 	if !ok {
-		return nil, fmt.Errorf("take on: unexpected parent type %T", vals[3])
+		return nil, fmt.Errorf("take on: unexpected parent type %T", vals[2])
 	}
 
 	return &storage.URLCache{
@@ -99,7 +99,7 @@ var pushURLScript = redis.NewScript(`
 	end
 
 	local info = {
-		status = status,
+		status = tonumber(status),
 		worker_id = '',
 		try = 0,
 		take_on_at = -1,
@@ -118,7 +118,7 @@ func (q *Queue) PushURL(ctx context.Context, url *storage.URLCache) (bool, error
 	res, err := pushURLScript.Run(
 		ctx, q.rdb,
 		[]string{KeyURLStatus, KeyQueue},
-		url, url.Parent, storage.QueuedCrawlStatus,
+		url.URL, url.Parent, int(storage.QueuedCrawlStatus),
 	).Int()
 	return res == 1, err
 }
@@ -131,7 +131,7 @@ func (q *Queue) PushURLs(ctx context.Context, urls []*storage.URLCache) ([]*stor
 		cmds[i] = pushURLScript.Eval(
 			ctx, pipe,
 			[]string{KeyURLStatus, KeyQueue},
-			url, url.Parent, storage.QueuedCrawlStatus,
+			url.URL, url.Parent, int(storage.QueuedCrawlStatus),
 		)
 	}
 
@@ -143,9 +143,10 @@ func (q *Queue) PushURLs(ctx context.Context, urls []*storage.URLCache) ([]*stor
 	var pushed []*storage.URLCache
 	for i, cmd := range cmds {
 		res, err := cmd.Int()
-		if err == nil && res == 1 {
-			pushed = append(pushed, urls[i])
+		if err != nil || res != 1 {
+			continue
 		}
+		pushed = append(pushed, urls[i])
 	}
 
 	return pushed, nil

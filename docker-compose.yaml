@@ -3,6 +3,9 @@ services:
     build: .
     container_name: oafse-crawler
     env_file: ".env"
+    environment:
+      POSTGRES_DSN: ${POSTGRES_DOCKER_DSN}
+      REDIS_DSN: ${REDIS_DOCKER_DSN}
     ports:
       - 14444:14444
     networks:
