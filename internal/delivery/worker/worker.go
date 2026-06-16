@@ -58,7 +58,10 @@ func (w *Worker) run(parent context.Context) {
 		ch := make(chan *port.ParseCmd, 1)
 
 		go func() {
-			cmd, _ := w.parse.Execute(ctx, w.id)
+			cmd, err := w.parse.Execute(ctx, w.id)
+			if err != nil {
+				log.Printf("[WARN] worker run: %s", err)
+			}
 			ch <- cmd
 		}()
 
@@ -80,8 +83,8 @@ func (w *Worker) run(parent context.Context) {
 				return
 			}
 		case <-ctx.Done():
+			cancel()
 			if parent.Err() != nil {
-				cancel()
 				return
 			}
 		}

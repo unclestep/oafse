@@ -80,14 +80,14 @@ func (e *Extractor) extractLinks(root *html.Node, base *model.URL) []string {
 				if attr.Key == "href" && attr.Val != "" {
 					ref, err := url.Parse(attr.Val)
 					if err != nil {
-						break
+						continue
 					}
 
 					abs := base.ResolveReference(ref)
 					if base.Hostname() == abs.Hostname() {
 						cand, err := model.NewURLFromParsed(abs)
 						if err != nil {
-							break
+							continue
 						}
 						links = append(links, cand.String())
 					}

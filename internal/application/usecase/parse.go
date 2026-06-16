@@ -35,8 +35,12 @@ func (uc *Parse) Execute(ctx context.Context, workerID string) (*port.ParseCmd, 
 		return fmt.Errorf("parse use case: %w", err)
 	}
 	giveUp := func(url *model.URL, err error) (*port.ParseCmd, error) {
-		log.Printf("[ERROR] parse use case: give up url because of: %s", err)
-		if err := uc.repo.GiveUpURL(ctx, url.String()); err != nil {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		log.Printf("[WARN] parse use case: give up %s because of: %s", url.String(), err)
+
+		if err := uc.repo.GiveUpURL(cleanupCtx, url.String()); err != nil {
 			return nil, wrap(err)
 		}
 		return nil, nil
@@ -49,7 +53,7 @@ func (uc *Parse) Execute(ctx context.Context, workerID string) (*port.ParseCmd, 
 			return nil, wrap(err)
 		}
 		if md.UnprocessedCount > 0 {
-			var retryAt = time.Now().Add(rand.N(100 * time.Millisecond))
+			retryAt := time.Now().Add(rand.N(100 * time.Millisecond))
 			if !md.EarliestRetry.IsZero() {
 				retryAt = md.EarliestRetry
 			}

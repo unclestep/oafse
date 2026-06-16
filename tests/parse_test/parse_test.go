@@ -7,8 +7,11 @@ import (
 	"testing"
 	"time"
 
-	read "codeberg.org/readeck/go-readability/v2"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
+
+	read "codeberg.org/readeck/go-readability/v2"
 	"github.com/stretchr/testify/suite"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -30,8 +33,10 @@ type ParseSuite struct {
 	redisContainer *tcredis.RedisContainer
 	pgContainer    *tcpostgres.PostgresContainer
 	rdb            *redis.Client
-	pool           *pg.DBTX
-	curator        *sredis.URLDS
+	pool           *pgxpool.Pool
+	tx             pgx.Tx
+	pageDS         *pg.PageDS
+	urlDS          *sredis.URLDS
 }
 
 func (s *ParseSuite) SetupSuite() {
@@ -65,24 +70,31 @@ func (s *ParseSuite) SetupSuite() {
 
 	pool, err := pg.NewPool(pgDSN)
 	s.Require().NoError(err)
-
-	dbtx := pg.DBTX(pool)
-	s.pool = &dbtx
+	s.pool = pool
 
 	queue := sredis.NewQueue(rdb)
 	retry := sredis.NewRetry(rdb)
 	processing := sredis.NewProcessing(rdb, 1)
-	s.curator = sredis.NewURLDS(rdb, queue, processing, retry)
+	s.urlDS = sredis.NewURLDS(rdb, queue, processing, retry)
 }
 
 func (s *ParseSuite) TearDownSuite() {
+	s.pool.Close()
 	s.Require().NoError(s.rdb.Close())
 	s.Require().NoError(testcontainers.TerminateContainer(s.redisContainer))
 	s.Require().NoError(testcontainers.TerminateContainer(s.pgContainer))
 }
 
+func (s *ParseSuite) SetupTest() {
+	tx, err := s.pool.Begin(context.Background())
+	s.Require().NoError(err)
+	s.tx = tx
+	s.pageDS = pg.NewPageDS(tx)
+}
+
 func (s *ParseSuite) TearDownTest() {
 	s.Require().NoError(s.rdb.FlushDB(context.Background()).Err())
+	s.Require().NoError(s.tx.Rollback(context.Background()))
 }
 
 func (s *ParseSuite) newUseCase(client *http.Client) *usecase.Parse {
@@ -101,9 +113,8 @@ func (s *ParseSuite) newUseCaseWithConfig(client *http.Client, cfg *model.CrawlC
 	fetch := fetcher.NewFetcher(client)
 	proc := service.NewProcessing()
 
-	pageDS := pg.NewPageDS(*s.pool)
-	pageRepo := repo.NewPageRepoDB(pageDS)
-	urlRepo := repo.NewURLRepoCache(s.curator)
+	pageRepo := repo.NewPageRepoDB(s.pageDS)
+	urlRepo := repo.NewURLRepoCache(s.urlDS)
 	crawlRepo := repo.NewCrawlRepo(urlRepo, pageRepo)
 
 	return usecase.NewParse(cfg, crawlRepo, proc, fetch, ext)
@@ -146,27 +157,26 @@ func (s *ParseSuite) TestExecuteParsesPageAndStoresResult() {
 	}
 
 	ctx := context.Background()
-	s.Require().NoError(s.curator.Start(ctx, ts.URL))
+	s.Require().NoError(s.urlDS.Start(ctx, ts.URL))
 
 	cmd, err := s.newUseCase(ts.Client()).Execute(ctx, "worker-0")
 	s.Require().NoError(err)
 	s.Nil(cmd, "successful parse must return nil cmd")
 
 	// Redis: source URL must be marked processed
-	info, err := s.curator.GetURLInfo(ctx, ts.URL)
+	info, err := s.urlDS.GetURLInfo(ctx, ts.URL)
 	s.Require().NoError(err)
 	s.Equal(sredis.StatusProcessed, info.Status)
 
 	// Redis: each discovered internal link must be enqueued for crawling
 	for _, link := range internalLinks {
-		linkInfo, err := s.curator.GetURLInfo(ctx, link)
+		linkInfo, err := s.urlDS.GetURLInfo(ctx, link)
 		s.Require().NoError(err, "link %s must be present in Redis", link)
 		s.Equal(sredis.StatusQueue, linkInfo.Status, "link %s must have queue status", link)
 	}
 
 	// Postgres: page saved with correct metadata
-	pageDS := pg.NewPageDS(*s.pool)
-	page, err := pageDS.GetPage(ctx, ts.URL)
+	page, err := s.pageDS.GetPage(ctx, ts.URL)
 	s.Require().NoError(err)
 	s.Equal(ts.URL, page.URL)
 	s.Equal("Web Crawlers", page.Title)
@@ -191,13 +201,13 @@ func (s *ParseSuite) TestExecuteServerErrorRetriesURL() {
 	defer ts.Close()
 
 	ctx := context.Background()
-	s.Require().NoError(s.curator.Start(ctx, ts.URL))
+	s.Require().NoError(s.urlDS.Start(ctx, ts.URL))
 
 	cmd, err := s.newUseCase(ts.Client()).Execute(ctx, "worker-0")
 	s.Require().NoError(err)
 	s.Nil(cmd)
 
-	info, err := s.curator.GetURLInfo(ctx, ts.URL)
+	info, err := s.urlDS.GetURLInfo(ctx, ts.URL)
 	s.Require().NoError(err)
 	s.Equal(sredis.StatusRetry, info.Status)
 	s.Equal(1, info.Try)
@@ -210,13 +220,13 @@ func (s *ParseSuite) TestExecutePermanentErrorGivesUpURL() {
 	defer ts.Close()
 
 	ctx := context.Background()
-	s.Require().NoError(s.curator.Start(ctx, ts.URL))
+	s.Require().NoError(s.urlDS.Start(ctx, ts.URL))
 
 	cmd, err := s.newUseCase(ts.Client()).Execute(ctx, "worker-0")
 	s.Require().NoError(err)
 	s.Nil(cmd)
 
-	info, err := s.curator.GetURLInfo(ctx, ts.URL)
+	info, err := s.urlDS.GetURLInfo(ctx, ts.URL)
 	s.Require().NoError(err)
 	s.Equal(sredis.StatusFailure, info.Status)
 }
@@ -237,14 +247,14 @@ func (s *ParseSuite) TestExecuteRetryLimitExceededGivesUpURL() {
 	uc := s.newUseCaseWithConfig(ts.Client(), cfg)
 
 	ctx := context.Background()
-	s.Require().NoError(s.curator.Start(ctx, ts.URL))
+	s.Require().NoError(s.urlDS.Start(ctx, ts.URL))
 
 	// First execute: URL gets scheduled for retry
 	cmd, err := uc.Execute(ctx, "worker-0")
 	s.Require().NoError(err)
 	s.Nil(cmd)
 
-	info, err := s.curator.GetURLInfo(ctx, ts.URL)
+	info, err := s.urlDS.GetURLInfo(ctx, ts.URL)
 	s.Require().NoError(err)
 	s.Equal(sredis.StatusRetry, info.Status)
 	s.Equal(1, info.Try)
@@ -257,17 +267,17 @@ func (s *ParseSuite) TestExecuteRetryLimitExceededGivesUpURL() {
 	s.Require().NoError(err)
 	s.Nil(cmd)
 
-	info, err = s.curator.GetURLInfo(ctx, ts.URL)
+	info, err = s.urlDS.GetURLInfo(ctx, ts.URL)
 	s.Require().NoError(err)
 	s.Equal(sredis.StatusFailure, info.Status)
 }
 
 func (s *ParseSuite) TestExecuteEmptyQueueWithProcessingReturnsSleep() {
 	ctx := context.Background()
-	s.Require().NoError(s.curator.Start(ctx, "http://example.com/page"))
+	s.Require().NoError(s.urlDS.Start(ctx, "http://example.com/page"))
 
 	// Simulate another worker holding the URL in processing state
-	_, err := s.curator.TakeOn(ctx, "other-worker")
+	_, err := s.urlDS.TakeOn(ctx, "other-worker")
 	s.Require().NoError(err)
 
 	// Queue is empty but there is a URL in processing -> DirectiveSleep
@@ -285,7 +295,7 @@ func (s *ParseSuite) TestExecuteEmptyQueueWithRetryReturnsSleep() {
 	defer ts.Close()
 
 	ctx := context.Background()
-	s.Require().NoError(s.curator.Start(ctx, ts.URL))
+	s.Require().NoError(s.urlDS.Start(ctx, ts.URL))
 
 	uc := s.newUseCase(ts.Client())
 
@@ -294,7 +304,7 @@ func (s *ParseSuite) TestExecuteEmptyQueueWithRetryReturnsSleep() {
 	s.Require().NoError(err)
 	s.Nil(cmd)
 
-	info, err := s.curator.GetURLInfo(ctx, ts.URL)
+	info, err := s.urlDS.GetURLInfo(ctx, ts.URL)
 	s.Require().NoError(err)
 	s.Equal(sredis.StatusRetry, info.Status)
 
@@ -326,14 +336,14 @@ func (s *ParseSuite) TestExecuteDuplicateLinksQueuedOnce() {
 	defer ts.Close()
 
 	ctx := context.Background()
-	s.Require().NoError(s.curator.Start(ctx, ts.URL))
+	s.Require().NoError(s.urlDS.Start(ctx, ts.URL))
 
 	cmd, err := s.newUseCase(ts.Client()).Execute(ctx, "worker-0")
 	s.Require().NoError(err)
 	s.Nil(cmd)
 
 	// /about must be enqueued exactly once despite appearing three times in HTML
-	linkInfo, err := s.curator.GetURLInfo(ctx, ts.URL+"/about")
+	linkInfo, err := s.urlDS.GetURLInfo(ctx, ts.URL+"/about")
 	s.Require().NoError(err)
 	s.Equal(sredis.StatusQueue, linkInfo.Status)
 
@@ -361,7 +371,7 @@ func (s *ParseSuite) TestExecuteExternalLinksNotQueued() {
 	defer ts.Close()
 
 	ctx := context.Background()
-	s.Require().NoError(s.curator.Start(ctx, ts.URL))
+	s.Require().NoError(s.urlDS.Start(ctx, ts.URL))
 
 	cmd, err := s.newUseCase(ts.Client()).Execute(ctx, "worker-0")
 	s.Require().NoError(err)
@@ -372,7 +382,7 @@ func (s *ParseSuite) TestExecuteExternalLinksNotQueued() {
 	s.Require().NoError(err)
 	s.Equal(int64(1), count)
 
-	_, err = s.curator.GetURLInfo(ctx, "https://external.example.com")
+	_, err = s.urlDS.GetURLInfo(ctx, "https://external.example.com")
 	s.Error(err, "external URL must be absent from Redis")
 }
 

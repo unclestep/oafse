@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -206,7 +207,7 @@ func TestFetcherSPA(t *testing.T) {
 	}{
 		{
 			name: "React",
-			body: `<div id="root"></div>`,
+			body: `<div class="wrapper"><div id="root"></div></div>`,
 		},
 		{
 			name: "Vue",
@@ -247,8 +248,13 @@ func TestFetcherSPA(t *testing.T) {
 			<body>%s</body>
 			</html>`, tc.body)
 
+			var chromedpUsed atomic.Bool
+
 			ts := httptest.NewServer(
 				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if strings.Contains(r.Header.Get("User-Agent"), "HeadlessChrome") {
+						chromedpUsed.Store(true)
+					}
 					w.Header().Set("Content-Type", "text/html")
 					w.WriteHeader(http.StatusOK)
 					_, err := w.Write([]byte(htmlResponse))
@@ -260,6 +266,7 @@ func TestFetcherSPA(t *testing.T) {
 			f := newFetcher(t)
 			res, err := f.Fetch(context.Background(), newURL(t, ts.URL))
 			require.NoError(t, err)
+			assert.True(t, chromedpUsed.Load(), "expected chromedp to re-fetch the SPA page")
 			assert.Contains(t, res.ContentType, "text/html")
 			assert.NotEmpty(t, res.Raw)
 		})
@@ -279,8 +286,13 @@ func TestFetcherSPANextJSHeader(t *testing.T) {
 		</html>
 	`
 
+	var chromedpUsed atomic.Bool
+
 	ts := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.Contains(r.Header.Get("User-Agent"), "HeadlessChrome") {
+				chromedpUsed.Store(true)
+			}
 			w.Header().Set("Content-Type", "text/html")
 			w.Header().Set("X-Powered-By", "Next.js")
 			w.WriteHeader(http.StatusOK)
@@ -293,6 +305,7 @@ func TestFetcherSPANextJSHeader(t *testing.T) {
 	f := newFetcher(t)
 	res, err := f.Fetch(context.Background(), newURL(t, ts.URL))
 	require.NoError(t, err)
+	assert.True(t, chromedpUsed.Load(), "expected chromedp to re-fetch the SPA page")
 	assert.Contains(t, res.ContentType, "text/html")
 	assert.NotEmpty(t, res.Raw)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	domainModel "oafse/internal/domain/model"
@@ -68,12 +69,26 @@ func (s *URLDS) Start(ctx context.Context, url string) error {
 }
 
 func (s *URLDS) StartHealthChecking(ctx context.Context, cfg *domainModel.CrawlConfig) {
-	go func(worryThreshold time.Duration) {
+	go func() {
+		defer func() {
+			if err := recover(); err != nil {
+				log.Printf("[WARN] health checking: %s", err)
+				s.StartHealthChecking(ctx, cfg)
+			}
+		}()
+
+		ticker := time.NewTicker(cfg.HealthCheckWorryThreshold)
+		defer ticker.Stop()
+
 		for {
-			time.Sleep(worryThreshold)
-			_ = s.HealthCheck(ctx, worryThreshold)
+			select {
+			case <-ticker.C:
+				_ = s.HealthCheck(ctx, cfg.HealthCheckWorryThreshold)
+			case <-ctx.Done():
+				return
+			}
 		}
-	}(cfg.HealthCheckWorryThreshold)
+	}()
 }
 
 func (s *URLDS) GetURLInfo(ctx context.Context, url string) (*URLInfo, error) {
@@ -169,4 +184,24 @@ func (s *URLDS) GetCrawlMetadata(ctx context.Context) (*model.CrawlMetadata, err
 		UnprocessedCount: int(unprocessed),
 		EarliestRetry:    earliestRetry,
 	}, nil
+}
+
+func (s *URLDS) ResetCrawlCache(ctx context.Context) error {
+	var cursor uint64
+	for {
+		keys, next, err := s.rdb.Scan(ctx, cursor, "crawler:*", 100).Result()
+		if err != nil {
+			return fmt.Errorf("reset crawl cache: %w", err)
+		}
+		if len(keys) > 0 {
+			if err := s.rdb.Del(ctx, keys...).Err(); err != nil {
+				return fmt.Errorf("reset crawl cache: %w", err)
+			}
+		}
+		cursor = next
+		if cursor == 0 {
+			break
+		}
+	}
+	return nil
 }

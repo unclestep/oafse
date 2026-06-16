@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
-	"time"
+	"sync"
 
 	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/fetch"
@@ -18,16 +19,20 @@ import (
 	"oafse/internal/domain/model"
 )
 
-var spaMarkers = []string{
-	`<div id="root"></div>`,
-	`<div id="app"></div>`,
-	`data-reactroot`,
-	`ng-version`,
-	`__NEXT_DATA__`,
-	`__NUXT__`,
-	`window.__INITIAL_STATE__`,
-	`<noscript>`,
-}
+var (
+	spaMarkers = []string{
+		`<div id="root"`,
+		`<div id="app"`,
+		`<div id="__next"`,
+		`data-reactroot`,
+		`ng-version`,
+		`__NEXT_DATA__`,
+		`__NUXT__`,
+		`window.__INITIAL_STATE__`,
+	}
+
+	noscriptSPAPattern = regexp.MustCompile(`(?i)<noscript>[^<]*javascript`)
+)
 
 type Fetcher struct {
 	client *http.Client
@@ -40,13 +45,13 @@ func NewFetcher(client *http.Client) *Fetcher {
 }
 
 func isSPA(htmlBytes []byte) bool {
-	cont := strings.ToLower(string(htmlBytes))
+	cont := string(htmlBytes)
 	for _, marker := range spaMarkers {
 		if strings.Contains(cont, marker) {
 			return true
 		}
 	}
-	return false
+	return noscriptSPAPattern.MatchString(cont)
 }
 
 func (f *Fetcher) Fetch(parent context.Context, u *model.URL) (*port.FetchData, error) {
@@ -54,10 +59,7 @@ func (f *Fetcher) Fetch(parent context.Context, u *model.URL) (*port.FetchData, 
 		return fmt.Errorf("fetch: %w", err)
 	}
 
-	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	req, err := http.NewRequestWithContext(parent, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return nil, wrap(err)
 	}
@@ -111,12 +113,14 @@ func (f *Fetcher) Fetch(parent context.Context, u *model.URL) (*port.FetchData, 
 		)
 		allocCtx, cancelAlloc := chromedp.NewExecAllocator(parent, opts...)
 		defer cancelAlloc()
-		ctx, cancelCtx := chromedp.NewContext(allocCtx)
+		chromeCtx, cancelCtx := chromedp.NewContext(allocCtx)
 		defer cancelCtx()
-		chromedp.ListenTarget(ctx, blockNonEssentialResources(ctx))
+
+		var wg sync.WaitGroup
+		chromedp.ListenTarget(chromeCtx, blockNonEssentialResources(chromeCtx, &wg))
 
 		var res string
-		err := chromedp.Run(ctx,
+		err := chromedp.Run(chromeCtx,
 			fetch.Enable().WithPatterns([]*fetch.RequestPattern{
 				{RequestStage: fetch.RequestStageRequest},
 			}),
@@ -124,6 +128,7 @@ func (f *Fetcher) Fetch(parent context.Context, u *model.URL) (*port.FetchData, 
 			chromedp.WaitVisible("body"),
 			chromedp.OuterHTML(`html`, &res),
 		)
+		wg.Wait()
 		if err != nil {
 			return nil, wrap(err)
 		}
@@ -143,14 +148,14 @@ func (f *Fetcher) Fetch(parent context.Context, u *model.URL) (*port.FetchData, 
 	}, nil
 }
 
-func blockNonEssentialResources(ctx context.Context) func(event any) {
+func blockNonEssentialResources(ctx context.Context, wg *sync.WaitGroup) func(event any) {
 	return func(event any) {
 		ev, ok := event.(*fetch.EventRequestPaused)
 		if !ok {
 			return
 		}
 
-		go func() {
+		wg.Go(func() {
 			c := chromedp.FromContext(ctx)
 			execCtx := cdp.WithExecutor(ctx, c.Target)
 
@@ -167,6 +172,6 @@ func blockNonEssentialResources(ctx context.Context) func(event any) {
 			} else {
 				_ = fetch.ContinueRequest(ev.RequestID).Do(execCtx)
 			}
-		}()
+		})
 	}
 }

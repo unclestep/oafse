@@ -2,6 +2,7 @@ package di
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"os"
 	"time"
@@ -23,7 +24,7 @@ import (
 	"go.uber.org/fx"
 )
 
-func NewCrawler(startURL string) fx.Option {
+func NewCrawler(startURL string, resume bool) fx.Option {
 	return fx.Module(
 		"crawler",
 		fx.Provide(func() *model.CrawlConfig {
@@ -43,20 +44,47 @@ func NewCrawler(startURL string) fx.Option {
 		appMod,
 		workerMod,
 		fx.Invoke(func(lc fx.Lifecycle, repo port.CrawlRepo, cfg *model.CrawlConfig) {
+			var cancel context.CancelFunc
+
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
-					repo.StartHealthChecking(context.Background(), cfg)
+					appCtx, canc := context.WithCancel(context.Background())
+					cancel = canc
+
+					if !resume {
+						if err := repo.ResetCrawlCache(ctx); err != nil {
+							return err
+						}
+					}
+
+					repo.StartHealthChecking(appCtx, cfg)
 					return repo.Start(ctx, cfg.StartURL)
+				},
+				OnStop: func(ctx context.Context) error {
+					cancel()
+					return nil
 				},
 			})
 		}),
 		fx.Invoke(func(lc fx.Lifecycle, pool *worker.WorkerPool, shutdowner fx.Shutdowner) {
+			var cancel context.CancelFunc
+
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
+					appCtx, canc := context.WithCancel(context.Background())
+					cancel = canc
+
 					go func() {
-						pool.Run(context.Background())
-						_ = shutdowner.Shutdown()
+						pool.Run(appCtx)
+						if err := shutdowner.Shutdown(); err != nil {
+							log.Printf("[ERROR] shutdown: %s", err)
+						}
 					}()
+
+					return nil
+				},
+				OnStop: func(ctx context.Context) error {
+					cancel()
 					return nil
 				},
 			})
@@ -68,7 +96,7 @@ var fetcherMod = fx.Module(
 	"fetcher",
 	fx.Provide(func() *http.Client {
 		return &http.Client{
-			Timeout: 15 * time.Second,
+			Timeout: 30 * time.Second,
 		}
 	}),
 	fx.Provide(fx.Annotate(

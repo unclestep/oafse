@@ -27,4 +27,5 @@ type CrawlRepo interface {
 	GiveUpURL(ctx context.Context, url string) error
 	Done(ctx context.Context, page *model.Page) error
 	GetCrawlMetadata(ctx context.Context) (*CrawlMetadata, error)
+	ResetCrawlCache(ctx context.Context) error
 }

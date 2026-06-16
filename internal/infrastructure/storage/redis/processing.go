@@ -143,7 +143,7 @@ var recoverScript = redis.NewScript(`
 
 	redis.call('HSET', keyURLStatus, url, newJSON)
 	local keyProcessingQueue = prefixProcessingQueue .. ':' .. info['worker_id']
-	redis.call('LREM', keyProcessingQueue, 1, url)
+	redis.call('LREM', keyProcessingQueue, 0, url)
 	redis.call('SREM', keyProcessingIndex, url)
 	redis.call('LPUSH', keyQueue, url)
 	return 1

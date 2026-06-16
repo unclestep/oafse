@@ -17,4 +17,5 @@ type URLCacheDS interface {
 	GiveUpURL(ctx context.Context, url string) error
 	Done(ctx context.Context, url string) error
 	GetCrawlMetadata(ctx context.Context) (*model.CrawlMetadata, error)
+	ResetCrawlCache(ctx context.Context) error
 }

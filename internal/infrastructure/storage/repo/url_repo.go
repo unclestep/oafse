@@ -94,3 +94,7 @@ func (r *URLRepoCache) GetCrawlMetadata(ctx context.Context) (*port.CrawlMetadat
 	}
 	return mapper.ToDomainCrawlMetadata(md), nil
 }
+
+func (r *URLRepoCache) ResetCrawlCache(ctx context.Context) error {
+	return r.s.ResetCrawlCache(ctx)
+}
