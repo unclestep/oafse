@@ -1,4 +1,17 @@
 services:
+  oafse-crawler:
+    build: .
+    container_name: oafse-crawler
+    env_file: ".env"
+    ports:
+      - 14444:14444
+    networks:
+      - oafse-net
+    depends_on:
+      oafse-redis:
+        condition: service_started
+      oafse-postgres:
+        condition: service_healthy
   oafse-redis:
     image: redis:alpine
     container_name: oafse_redis
@@ -17,6 +30,12 @@ services:
       - oafse-net
     volumes:
       - oafse-db:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      start_period: 30s
+      timeout: 5s
+      retries: 5
 
 networks:
   oafse-net:

@@ -19,6 +19,7 @@ type Fetcher interface {
 
 type FetchData struct {
 	URL         *model.URL
+	FinalURL    *model.URL
 	Status      FetchStatus
 	ContentType string
 	Raw         []byte

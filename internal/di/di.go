@@ -43,7 +43,7 @@ func NewCrawler(startURL string, resume bool) fx.Option {
 		dsMod,
 		appMod,
 		workerMod,
-		fx.Invoke(func(lc fx.Lifecycle, repo port.CrawlRepo, cfg *model.CrawlConfig) {
+		fx.Invoke(func(lc fx.Lifecycle, urlRepo port.URLRepo, cfg *model.CrawlConfig) {
 			var cancel context.CancelFunc
 
 			lc.Append(fx.Hook{
@@ -52,13 +52,13 @@ func NewCrawler(startURL string, resume bool) fx.Option {
 					cancel = canc
 
 					if !resume {
-						if err := repo.ResetCrawlCache(ctx); err != nil {
+						if err := urlRepo.ResetCrawlCache(ctx); err != nil {
 							return err
 						}
 					}
 
-					repo.StartHealthChecking(appCtx, cfg)
-					return repo.Start(ctx, cfg.StartURL)
+					urlRepo.StartHealthChecking(appCtx, cfg)
+					return urlRepo.Start(ctx, cfg.StartURL)
 				},
 				OnStop: func(ctx context.Context) error {
 					cancel()
@@ -129,11 +129,13 @@ var domainMod = fx.Module(
 
 var repoMod = fx.Module(
 	"repo",
-	fx.Provide(repo.NewPageRepoDB),
-	fx.Provide(repo.NewURLRepoCache),
 	fx.Provide(fx.Annotate(
-		repo.NewCrawlRepo,
-		fx.As(new(port.CrawlRepo)),
+		repo.NewPageRepoDB,
+		fx.As(new(port.PageDBRepo)),
+	)),
+	fx.Provide(fx.Annotate(
+		repo.NewURLRepoCache,
+		fx.As(new(port.URLRepo)),
 	)),
 )
 

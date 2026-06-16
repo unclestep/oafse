@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	storage "oafse/internal/infrastructure/storage/model"
+
 	"github.com/redis/go-redis/v9"
 )
 
@@ -58,7 +60,7 @@ func (r *Retry) EnqueueURLs(ctx context.Context) (int64, error) {
 	remaining, err := enqueueURLsScript.Run(
 		ctx, r.rdb,
 		[]string{KeyRetry, KeyURLStatus, KeyQueue},
-		time.Now().UnixMilli(), string(StatusQueue),
+		time.Now().UnixMilli(), storage.QueuedCrawlStatus,
 	).Int64()
 	if err != nil && err != redis.Nil {
 		return 0, fmt.Errorf("enqueue retry urls: %w", err)

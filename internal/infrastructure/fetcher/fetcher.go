@@ -93,6 +93,7 @@ func startChromeBrowser(parent context.Context) browser {
 		chromedp.Flag("disable-software-rasterizer", true),
 		chromedp.Flag("disable-default-apps", true),
 		chromedp.Flag("disable-component-update", true),
+		chromedp.Flag("disable-dev-shm-usage", true),
 		chromedp.NoSandbox,
 		chromedp.Headless,
 		chromedp.DisableGPU,
@@ -137,6 +138,11 @@ func (f *Fetcher) Fetch(parent context.Context, u *model.URL) (*port.FetchData, 
 		_ = resp.Body.Close()
 	}()
 
+	finalURL, err := model.NewURLFromParsed(resp.Request.URL)
+	if err != nil {
+		return nil, wrap(err)
+	}
+
 	if fetchStatus := port.ClassifyStatus(resp.StatusCode); fetchStatus != port.FetchOK {
 		return &port.FetchData{
 			Status: fetchStatus,
@@ -171,11 +177,13 @@ func (f *Fetcher) Fetch(parent context.Context, u *model.URL) (*port.FetchData, 
 			return nil, wrap(err)
 		}
 		fd.ContentType = contentType
+		fd.FinalURL = finalURL
 		return fd, nil
 	}
 
 	return &port.FetchData{
 		URL:         u,
+		FinalURL:    finalURL,
 		Status:      port.FetchOK,
 		ContentType: contentType,
 		Raw:         pageContent,

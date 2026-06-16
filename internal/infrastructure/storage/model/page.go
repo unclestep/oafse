@@ -10,5 +10,4 @@ type PageDB struct {
 	Description string
 	Content     string
 	CrawledAt   time.Time // Freshness. Based on this timestamp can be taken a desicion about recrawl the page
-	Links       []string
 }

@@ -7,5 +7,6 @@ import (
 )
 
 type PageDBDS interface {
-	SavePage(ctx context.Context, page *storage.PageDB) error
+	InsertPage(ctx context.Context, page *storage.PageDB) (int64, error)
+	InsertLink(ctx context.Context, parentURL string, childPageID int64) error
 }

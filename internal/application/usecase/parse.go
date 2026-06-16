@@ -14,16 +14,18 @@ import (
 
 type Parse struct {
 	cfg       *model.CrawlConfig
-	repo      port.CrawlRepo
+	pageRepo  port.PageDBRepo
+	urlRepo   port.URLRepo
 	fetcher   port.Fetcher
 	proc      port.Processing
 	extractor port.Extractor
 }
 
-func NewParse(cfg *model.CrawlConfig, repo port.CrawlRepo, proc port.Processing, fetcher port.Fetcher, extractor port.Extractor) *Parse {
+func NewParse(cfg *model.CrawlConfig, pageRepo port.PageDBRepo, urlRepo port.URLRepo, proc port.Processing, fetcher port.Fetcher, extractor port.Extractor) *Parse {
 	return &Parse{
 		cfg:       cfg,
-		repo:      repo,
+		pageRepo:  pageRepo,
+		urlRepo:   urlRepo,
 		fetcher:   fetcher,
 		proc:      proc,
 		extractor: extractor,
@@ -40,15 +42,15 @@ func (uc *Parse) Execute(ctx context.Context, workerID string) (*port.ParseCmd, 
 
 		log.Printf("[WARN] parse use case: give up %s because of: %s", url.String(), err)
 
-		if err := uc.repo.GiveUpURL(cleanupCtx, url.String()); err != nil {
+		if err := uc.urlRepo.MarkProcessed(cleanupCtx, url.String(), model.DoneCrawlStatus); err != nil {
 			return nil, wrap(err)
 		}
 		return nil, nil
 	}
 
-	url, err := uc.repo.TakeOn(ctx, workerID)
+	url, err := uc.urlRepo.TakeOn(ctx, workerID)
 	if errors.Is(err, port.ErrQueueEmpty) {
-		md, err := uc.repo.GetCrawlMetadata(ctx)
+		md, err := uc.urlRepo.GetCrawlMetadata(ctx)
 		if err != nil {
 			return nil, wrap(err)
 		}
@@ -82,22 +84,40 @@ func (uc *Parse) Execute(ctx context.Context, workerID string) (*port.ParseCmd, 
 			return giveUp(url, fmt.Errorf("retry limit exceeded: cur %d, threshold %d", url.Try, uc.cfg.TryLim))
 		}
 
-		if err = uc.repo.RetryURL(ctx, url.String(), retryAt); err != nil {
+		if err = uc.urlRepo.RetryURL(ctx, url.String(), retryAt); err != nil {
 			return giveUp(url, err)
 		}
 		return nil, nil
 	}
 
-	page, err := uc.extractor.Extract(fd)
+	page, links, err := uc.extractor.Extract(fd)
 	if err != nil {
 		return giveUp(url, err)
 	}
 
-	if err := uc.repo.Done(ctx, page); err != nil {
+	pageID, err := uc.pageRepo.SavePage(ctx, page)
+	if err != nil {
+		log.Printf("[WARN] lost urls: %v", links)
 		return giveUp(url, err)
 	}
 
-	log.Printf("[INFO] page %s is successfully parsed", page.URL)
+	if url.Parent != "" {
+		if err := uc.pageRepo.SaveLink(ctx, url.Parent, pageID); err != nil {
+			log.Printf("[WARN] lost urls: %v", links)
+			return giveUp(url, err)
+		}
+	}
 
+	if len(links) != 0 {
+		pushed, err := uc.urlRepo.PushURLs(ctx, links)
+		if len(pushed) != len(links) {
+			log.Printf("[WARN] input: %d urls, pushed: %d urls", len(links), len(pushed))
+		}
+		if err != nil {
+			return giveUp(url, err)
+		}
+	}
+
+	log.Printf("[SUCCESS] page %s is successfully parsed", page.URL)
 	return nil, nil
 }

@@ -23,30 +23,21 @@ func NewExtractor(parser *read.Parser) *Extractor {
 	return &Extractor{parser: parser}
 }
 
-func (e *Extractor) Extract(fetchData *port.FetchData) (*model.Page, error) {
+func (e *Extractor) Extract(fetchData *port.FetchData) (*model.Page, []*model.URL, error) {
 	wrap := func(err error) error {
 		return fmt.Errorf("extract: %w", err)
 	}
 
-	/* if strings.Contains(fetchData.ContentType, "text/plain") || strings.Contains(fetchData.ContentType, "text/markdown") {
-		return &model.Page{
-			URL:         fetchData.URL,
-			Title:       "",
-			Description: "",
-			Content:     string(fetchData.Raw),
-			Links:       []*model.URL{},
-		}, nil
-	} */
-
 	doc, err := html.Parse(bytes.NewReader(fetchData.Raw))
 	if err != nil {
-		return nil, wrap(err)
+		return nil, nil, wrap(err)
 	}
+
 	links := e.extractLinks(doc, fetchData.URL)
 
 	art, err := e.parser.Parse(bytes.NewReader(fetchData.Raw), fetchData.URL.URL)
 	if err != nil {
-		return nil, wrap(err)
+		return nil, nil, wrap(err)
 	}
 
 	var title, description, content string
@@ -55,7 +46,7 @@ func (e *Extractor) Extract(fetchData *port.FetchData) (*model.Page, error) {
 		description = art.Excerpt()
 		var sb strings.Builder
 		if err := art.RenderText(&sb); err != nil {
-			return nil, wrap(err)
+			return nil, nil, wrap(err)
 		}
 		content = sb.String()
 	}
@@ -66,12 +57,11 @@ func (e *Extractor) Extract(fetchData *port.FetchData) (*model.Page, error) {
 		Description: description,
 		Content:     content,
 		CrawledAt:   time.Now(),
-		Links:       links,
-	}, nil
+	}, links, nil
 }
 
-func (e *Extractor) extractLinks(root *html.Node, base *model.URL) []string {
-	var links []string
+func (e *Extractor) extractLinks(root *html.Node, base *model.URL) []*model.URL {
+	var links []*model.URL
 
 	var dfs func(*html.Node)
 	dfs = func(n *html.Node) {
@@ -89,7 +79,8 @@ func (e *Extractor) extractLinks(root *html.Node, base *model.URL) []string {
 						if err != nil {
 							continue
 						}
-						links = append(links, cand.String())
+						cand.Parent = base.String()
+						links = append(links, cand)
 					}
 				}
 			}

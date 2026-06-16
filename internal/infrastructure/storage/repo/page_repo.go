@@ -19,12 +19,23 @@ func NewPageRepoDB(source ds.PageDBDS) *PageRepoDB {
 	}
 }
 
-func (r *PageRepoDB) SavePage(ctx context.Context, page *domain.Page) error {
+func (r *PageRepoDB) SavePage(ctx context.Context, page *domain.Page) (int64, error) {
 	wrap := func(err error) error {
-		return fmt.Errorf("page repo db: save page: %w", err)
+		return fmt.Errorf("page repo db: insert page: %w", err)
 	}
 	storagePage := mapper.ToStoragePage(page)
-	err := r.s.SavePage(ctx, storagePage)
+	pageID, err := r.s.InsertPage(ctx, storagePage)
+	if err != nil {
+		return -1, wrap(err)
+	}
+	return pageID, nil
+}
+
+func (r *PageRepoDB) SaveLink(ctx context.Context, parentURL string, childPageID int64) error {
+	wrap := func(err error) error {
+		return fmt.Errorf("page repo db: insert link: %w", err)
+	}
+	err := r.s.InsertLink(ctx, parentURL, childPageID)
 	if err != nil {
 		return wrap(err)
 	}

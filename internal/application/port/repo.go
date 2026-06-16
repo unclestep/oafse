@@ -18,14 +18,18 @@ type CrawlMetadata struct {
 	EarliestRetry    time.Time
 }
 
-type CrawlRepo interface {
+type URLRepo interface {
 	Start(ctx context.Context, url string) error
 	StartHealthChecking(ctx context.Context, cfg *model.CrawlConfig)
 	TakeOn(ctx context.Context, workerID string) (*model.URL, error)
-	PushURLs(ctx context.Context, urls []string) ([]string, error)
+	PushURLs(ctx context.Context, urls []*model.URL) ([]*model.URL, error)
 	RetryURL(ctx context.Context, url string, retryAt time.Time) error
-	GiveUpURL(ctx context.Context, url string) error
-	Done(ctx context.Context, page *model.Page) error
+	MarkProcessed(ctx context.Context, url string, status model.CrawlStatus) error
 	GetCrawlMetadata(ctx context.Context) (*CrawlMetadata, error)
 	ResetCrawlCache(ctx context.Context) error
+}
+
+type PageDBRepo interface {
+	SavePage(ctx context.Context, page *model.Page) (int64, error)
+	SaveLink(ctx context.Context, parentURL string, childPageID int64) error
 }

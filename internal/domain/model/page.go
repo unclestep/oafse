@@ -8,7 +8,6 @@ type Page struct {
 	Description string
 	Content     string
 	CrawledAt   time.Time
-	Links       []string
 }
 
 func NewPage(url *URL) *Page {

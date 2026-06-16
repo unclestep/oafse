@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	storage "oafse/internal/infrastructure/storage/model"
+
 	"github.com/redis/go-redis/v9"
 )
 
@@ -65,7 +67,7 @@ func (p *Processing) RetryURL(ctx context.Context, url string, nextRetryTime tim
 	err := retryURLScript.Run(
 		ctx, p.rdb,
 		[]string{KeyURLStatus, KeyProcessingIndex, KeyRetry},
-		url, PrefixProcessingQueue, string(StatusRetry), nextRetryTime.UnixMilli(),
+		url, PrefixProcessingQueue, storage.RetryCrawlStatus, nextRetryTime.UnixMilli(),
 	).Err()
 	if err != nil {
 		return fmt.Errorf("retry url: %w", err)
@@ -98,11 +100,11 @@ var markProcessedScript = redis.NewScript(`
 	return 1
 `)
 
-func (p *Processing) MarkProcessed(ctx context.Context, url string, procRes URLStatus) error {
+func (p *Processing) MarkProcessed(ctx context.Context, url string, status storage.CrawlStatus) error {
 	err := markProcessedScript.Run(
 		ctx, p.rdb,
 		[]string{KeyURLStatus, KeyProcessingIndex},
-		url, PrefixProcessingQueue, string(procRes),
+		url, PrefixProcessingQueue, status,
 	).Err()
 	if err != nil {
 		return fmt.Errorf("mark processed: %w", err)
@@ -153,7 +155,7 @@ func (p *Processing) RecoverURL(ctx context.Context, url string) error {
 	err := recoverScript.Run(
 		ctx, p.rdb,
 		[]string{KeyURLStatus, KeyProcessingIndex, KeyQueue},
-		url, PrefixProcessingQueue, string(StatusQueue),
+		url, PrefixProcessingQueue, storage.QueuedCrawlStatus,
 	).Err()
 	if err != nil {
 		return fmt.Errorf("recover url: %w", err)

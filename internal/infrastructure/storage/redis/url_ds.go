@@ -7,29 +7,19 @@ import (
 	"log"
 	"time"
 
-	domainModel "oafse/internal/domain/model"
-	"oafse/internal/infrastructure/storage/model"
+	domain "oafse/internal/domain/model"
+	storage "oafse/internal/infrastructure/storage/model"
 
 	"github.com/redis/go-redis/v9"
 )
 
-type URLStatus string
-
-const (
-	StatusQueue      URLStatus = "queue"
-	StatusProcessing URLStatus = "processing"
-	StatusRetry      URLStatus = "retry"
-	StatusProcessed  URLStatus = "processed"
-	StatusFailure    URLStatus = "failure"
-	StatusManual     URLStatus = "manual"
-)
-
 type URLInfo struct {
-	Status   URLStatus `json:"status"`
-	WorkerID string    `json:"worker_id"`
-	TakeOnAt int64     `json:"take_on_at"` // UnixMilli format
-	Try      int       `json:"try"`
-	RetryAt  int64     `json:"retry_at"` // UnixMilli format
+	Status   storage.CrawlStatus `json:"status"`
+	WorkerID string              `json:"worker_id"`
+	TakeOnAt int64               `json:"take_on_at"` // UnixMilli format
+	Try      int                 `json:"try"`
+	RetryAt  int64               `json:"retry_at"` // UnixMilli format
+	Parent   string              `json:"parent"`
 }
 
 const (
@@ -61,14 +51,15 @@ func NewURLDS(rdb *redis.Client, queue *Queue, processing *Processing, retry *Re
 }
 
 func (s *URLDS) Start(ctx context.Context, url string) error {
-	_, err := s.PushURL(ctx, url)
+	metaURL := &storage.URLCache{URL: url}
+	_, err := s.PushURL(ctx, metaURL)
 	if err != nil {
 		return fmt.Errorf("start: %w", err)
 	}
 	return nil
 }
 
-func (s *URLDS) StartHealthChecking(ctx context.Context, cfg *domainModel.CrawlConfig) {
+func (s *URLDS) StartHealthChecking(ctx context.Context, cfg *domain.CrawlConfig) {
 	go func() {
 		defer func() {
 			if err := recover(); err != nil {
@@ -109,7 +100,7 @@ func (s *URLDS) GetURLInfo(ctx context.Context, url string) (*URLInfo, error) {
 }
 
 // TakeOn - lazily enqueue urls from retry queue. Better way to sleep workers before earliest URL becomes available
-func (s *URLDS) TakeOn(ctx context.Context, workerID string) (*model.URLCache, error) {
+func (s *URLDS) TakeOn(ctx context.Context, workerID string) (*storage.URLCache, error) {
 	_, err := s.EnqueueURLs(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("take on: can't enqueue urls: %w", err)
@@ -117,7 +108,7 @@ func (s *URLDS) TakeOn(ctx context.Context, workerID string) (*model.URLCache, e
 	return s.Queue.TakeOn(ctx, workerID)
 }
 
-func (s *URLDS) PushURLs(ctx context.Context, urls []string) ([]string, error) {
+func (s *URLDS) PushURLs(ctx context.Context, urls []*storage.URLCache) ([]*storage.URLCache, error) {
 	return s.Queue.PushURLs(ctx, urls)
 }
 
@@ -125,12 +116,8 @@ func (s *URLDS) RetryURL(ctx context.Context, url string, retryAt time.Time) err
 	return s.Processing.RetryURL(ctx, url, retryAt)
 }
 
-func (s *URLDS) GiveUpURL(ctx context.Context, url string) error {
-	return s.MarkProcessed(ctx, url, StatusFailure)
-}
-
-func (s *URLDS) Done(ctx context.Context, url string) error {
-	return s.MarkProcessed(ctx, url, StatusProcessed)
+func (s *URLDS) MarkProcessed(ctx context.Context, url string, status storage.CrawlStatus) error {
+	return s.MarkProcessed(ctx, url, status)
 }
 
 var getCrawlMetadataScript = redis.NewScript(`
@@ -154,13 +141,13 @@ var getCrawlMetadataScript = redis.NewScript(`
 	return {total, earliest}
 `)
 
-func (s *URLDS) GetCrawlMetadata(ctx context.Context) (*model.CrawlMetadata, error) {
+func (s *URLDS) GetCrawlMetadata(ctx context.Context) (*storage.CrawlMetadata, error) {
 	vals, err := getCrawlMetadataScript.Run(
 		ctx, s.rdb,
 		[]string{KeyQueue, KeyRetry, KeyProcessingIndex},
 	).Slice()
 	if err == redis.Nil {
-		return &model.CrawlMetadata{}, nil
+		return &storage.CrawlMetadata{}, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("get crawl metadata: %w", err)
@@ -180,7 +167,7 @@ func (s *URLDS) GetCrawlMetadata(ctx context.Context) (*model.CrawlMetadata, err
 		earliestRetry = time.UnixMilli(earliest)
 	}
 
-	return &model.CrawlMetadata{
+	return &storage.CrawlMetadata{
 		UnprocessedCount: int(unprocessed),
 		EarliestRetry:    earliestRetry,
 	}, nil

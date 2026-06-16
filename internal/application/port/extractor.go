@@ -5,5 +5,5 @@ import (
 )
 
 type Extractor interface {
-	Extract(fetchData *FetchData) (*model.Page, error)
+	Extract(fetchData *FetchData) (*model.Page, []*model.URL, error)
 }

@@ -6,9 +6,10 @@ import (
 	"time"
 
 	"oafse/internal/application/port"
-	domainModel "oafse/internal/domain/model"
+	domain "oafse/internal/domain/model"
 	"oafse/internal/infrastructure/storage/ds"
 	"oafse/internal/infrastructure/storage/mapper"
+	storage "oafse/internal/infrastructure/storage/model"
 )
 
 type URLRepoCache struct {
@@ -25,11 +26,11 @@ func (r *URLRepoCache) Start(ctx context.Context, url string) error {
 	return r.s.Start(ctx, url)
 }
 
-func (r *URLRepoCache) StartHealthChecking(ctx context.Context, cfg *domainModel.CrawlConfig) {
+func (r *URLRepoCache) StartHealthChecking(ctx context.Context, cfg *domain.CrawlConfig) {
 	r.s.StartHealthChecking(ctx, cfg)
 }
 
-func (r *URLRepoCache) TakeOn(ctx context.Context, workerID string) (*domainModel.URL, error) {
+func (r *URLRepoCache) TakeOn(ctx context.Context, workerID string) (*domain.URL, error) {
 	wrap := func(err error) error {
 		return fmt.Errorf("take on: %w", err)
 	}
@@ -46,17 +47,31 @@ func (r *URLRepoCache) TakeOn(ctx context.Context, workerID string) (*domainMode
 	return domainURL, nil
 }
 
-func (r *URLRepoCache) PushURLs(ctx context.Context, urls []string) ([]string, error) {
+func (r *URLRepoCache) PushURLs(ctx context.Context, urls []*domain.URL) ([]*domain.URL, error) {
 	wrap := func(err error) error {
 		return fmt.Errorf("push urls: %w", err)
 	}
 
-	pushed, err := r.s.PushURLs(ctx, urls)
+	storageURLs := make([]*storage.URLCache, len(urls))
+	for i, url := range urls {
+		storageURLs[i] = mapper.ToStorageURL(url)
+	}
+
+	pushed, err := r.s.PushURLs(ctx, storageURLs)
 	if err != nil {
 		return nil, wrap(err)
 	}
 
-	return pushed, nil
+	domainURLs := make([]*domain.URL, len(pushed))
+	for i, url := range pushed {
+		domainURL, err := mapper.ToDomainURL(url)
+		if err != nil {
+			return nil, wrap(err)
+		}
+		domainURLs[i] = domainURL
+	}
+
+	return domainURLs, nil
 }
 
 func (r *URLRepoCache) RetryURL(ctx context.Context, url string, retryAt time.Time) error {
@@ -71,20 +86,8 @@ func (r *URLRepoCache) RetryURL(ctx context.Context, url string, retryAt time.Ti
 	return nil
 }
 
-func (r *URLRepoCache) GiveUpURL(ctx context.Context, url string) error {
-	return r.s.GiveUpURL(ctx, url)
-}
-
-func (r *URLRepoCache) Done(ctx context.Context, url string) error {
-	wrap := func(err error) error {
-		return fmt.Errorf("done: %w", err)
-	}
-
-	err := r.s.Done(ctx, url)
-	if err != nil {
-		return wrap(err)
-	}
-	return nil
+func (r *URLRepoCache) MarkProcessed(ctx context.Context, url string, status domain.CrawlStatus) error {
+	return r.s.MarkProcessed(ctx, url, mapper.ToStorageCrawlStatus(status))
 }
 
 func (r *URLRepoCache) GetCrawlMetadata(ctx context.Context) (*port.CrawlMetadata, error) {

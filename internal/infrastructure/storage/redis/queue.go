@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"oafse/internal/application/port"
-	"oafse/internal/infrastructure/storage/model"
+	storage "oafse/internal/infrastructure/storage/model"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -45,16 +45,16 @@ var popURLScript = redis.NewScript(`
 
 	redis.call('SADD', keyProcessingIndex, url)
 
-	return {url, info['try'], info['retry_at']}
+	return {url, info['try'], info['parent']}
 `)
 
-func (q *Queue) TakeOn(ctx context.Context, workerID string) (*model.URLCache, error) {
+func (q *Queue) TakeOn(ctx context.Context, workerID string) (*storage.URLCache, error) {
 	keyProcessingQueue := WorkerKey(workerID)
 
 	vals, err := popURLScript.Run(
 		ctx, q.rdb,
 		[]string{KeyQueue, KeyURLStatus, keyProcessingQueue, KeyProcessingIndex},
-		workerID, time.Now().UnixMilli(), string(StatusProcessing),
+		workerID, time.Now().UnixMilli(), storage.ProcessingCrawlStatus,
 	).Slice()
 	if err == redis.Nil {
 		return nil, port.ErrQueueEmpty
@@ -73,15 +73,15 @@ func (q *Queue) TakeOn(ctx context.Context, workerID string) (*model.URLCache, e
 		return nil, fmt.Errorf("take on: unexpected try type %T", vals[1])
 	}
 
-	retryAt, ok := vals[2].(int64)
+	parent, ok := vals[2].(string)
 	if !ok {
-		return nil, fmt.Errorf("take on: unexpected retry_at type %T", vals[2])
+		return nil, fmt.Errorf("take on: unexpected parent type %T", vals[3])
 	}
 
-	return &model.URLCache{
-		URL:     url,
-		Try:     int(try),
-		RetryAt: time.UnixMilli(retryAt),
+	return &storage.URLCache{
+		URL:    url,
+		Try:    int(try),
+		Parent: parent,
 	}, nil
 }
 
@@ -89,7 +89,8 @@ var pushURLScript = redis.NewScript(`
 	local keyURLStatus = KEYS[1]
 	local keyQueue = KEYS[2]
 	local url = ARGV[1]
-	local status = ARGV[2]
+	local parent = ARGV[2]
+	local status = ARGV[3]
 
 	local isSeen = redis.call('HGET', keyURLStatus, url)
 
@@ -103,6 +104,7 @@ var pushURLScript = redis.NewScript(`
 		try = 0,
 		take_on_at = -1,
 		retry_at = -1,
+		parent = parent,
 	}
 
 	local pushedJSON = cjson.encode(info)
@@ -112,16 +114,16 @@ var pushURLScript = redis.NewScript(`
 	return 1
 `)
 
-func (q *Queue) PushURL(ctx context.Context, url string) (bool, error) {
+func (q *Queue) PushURL(ctx context.Context, url *storage.URLCache) (bool, error) {
 	res, err := pushURLScript.Run(
 		ctx, q.rdb,
 		[]string{KeyURLStatus, KeyQueue},
-		url, string(StatusQueue),
+		url, url.Parent, storage.QueuedCrawlStatus,
 	).Int()
 	return res == 1, err
 }
 
-func (q *Queue) PushURLs(ctx context.Context, urls []string) ([]string, error) {
+func (q *Queue) PushURLs(ctx context.Context, urls []*storage.URLCache) ([]*storage.URLCache, error) {
 	pipe := q.rdb.Pipeline()
 
 	cmds := make([]*redis.Cmd, len(urls))
@@ -129,7 +131,7 @@ func (q *Queue) PushURLs(ctx context.Context, urls []string) ([]string, error) {
 		cmds[i] = pushURLScript.Eval(
 			ctx, pipe,
 			[]string{KeyURLStatus, KeyQueue},
-			url, string(StatusQueue),
+			url, url.Parent, storage.QueuedCrawlStatus,
 		)
 	}
 
@@ -138,7 +140,7 @@ func (q *Queue) PushURLs(ctx context.Context, urls []string) ([]string, error) {
 		return nil, err
 	}
 
-	var pushed []string
+	var pushed []*storage.URLCache
 	for i, cmd := range cmds {
 		res, err := cmd.Int()
 		if err == nil && res == 1 {

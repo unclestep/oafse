@@ -3,20 +3,24 @@ package model
 import (
 	"fmt"
 	"net/url"
+	"strings"
 )
 
 type URL struct {
 	*url.URL
 
-	Try int
+	Parent string
+	Try    int
 }
 
 type CrawlStatus int
 
 const (
-	QueuedCrawlStatus CrawlStatus = iota
+	UnknownCrawlStatus CrawlStatus = iota
+	QueuedCrawlStatus
 	ProcessingCrawlStatus
 	DoneCrawlStatus
+	ManualCrawlStatus
 	GiveUpCrawlStatus
 	RetryCrawlStatus
 )
@@ -29,6 +33,8 @@ func (p CrawlStatus) String() string {
 		return "Processing"
 	case DoneCrawlStatus:
 		return "Done"
+	case ManualCrawlStatus:
+		return "Manual"
 	case RetryCrawlStatus:
 		return "Retry"
 	case GiveUpCrawlStatus:
@@ -68,14 +74,15 @@ func NewURL(raw string) (*URL, error) {
 
 func Normalize(unnorm *url.URL) *url.URL {
 	norm := *unnorm
+
+	norm.Host = strings.ToLower(norm.Host)
 	norm.User = nil
 	norm.Fragment = ""
 	norm.RawFragment = ""
 	norm.RawQuery = ""
 	norm.ForceQuery = false
-	if norm.Path == "/" {
-		norm.Path = ""
-	}
+	norm.Path = strings.TrimRight(norm.Path, "/")
+
 	return &norm
 }
 
