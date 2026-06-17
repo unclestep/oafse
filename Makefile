@@ -1,6 +1,6 @@
 all:
 	CGO_ENABLED=0 go build -o crawler cmd/crawler/main.go
-	CGO_ENABLED=0 go build -o crawler cmd/indexer/main.go
+	CGO_ENABLED=0 go build -o indexer cmd/indexer/main.go
 
 setup:
 	@echo "Setting up Chrome/Chromium for SPA tests..."
@@ -31,7 +31,7 @@ test: setup
 	go test ./... -timeout 120s -short
 
 db-check:
-	@. ./.env && psql "$$POSTGRES_LOCAL_DSN" -c "SELECT url, title, crawled_at FROM pages ORDER BY crawled_at DESC LIMIT 20;" \
+	@. ./.env && psql "$$POSTGRES_LOCAL_DSN" -c "SELECT url, title, crawled_at, vector FROM pages ORDER BY crawled_at DESC LIMIT 20;" \
 	                -c "SELECT COUNT(*) AS total_pages FROM pages;" \
 	                -c "SELECT COUNT(*) AS total_links FROM links;"
 

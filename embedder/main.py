@@ -8,7 +8,7 @@ import torch
 from proto import embedder_pb2_grpc
 from servicer import EmbedderServicer
 
-DEFAULT_ADDR = "[::]:50051"
+DEFAULT_ADDR = "[::]:14445"
 DEFAULT_MODEL = "all-MiniLM-L6-v2"
 
 def serve() -> None:

@@ -35,7 +35,7 @@ func (e *Embedder) Close() error {
 const maxBatchSize = 3_500_000
 
 func (e *Embedder) Embed(ctx context.Context, text string) ([]float32, error) {
-	resp, err := e.pb.Embed(ctx, &pb.EmbedRequest{Text: text})
+	resp, err := e.pb.Embed(ctx, &pb.EmbedRequest{Text: text}, grpc.WaitForReady(true))
 	if err != nil {
 		return nil, fmt.Errorf("embed: %w", err)
 	}
@@ -87,7 +87,7 @@ func (e *Embedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32,
 }
 
 func (e *Embedder) embedBatch(ctx context.Context, texts []string) ([][]float32, error) {
-	resp, err := e.pb.EmbedBatch(ctx, &pb.EmbedBatchRequest{Texts: texts})
+	resp, err := e.pb.EmbedBatch(ctx, &pb.EmbedBatchRequest{Texts: texts}, grpc.WaitForReady(true))
 	if err != nil {
 		return nil, err
 	}

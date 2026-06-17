@@ -34,5 +34,5 @@ type PageDBRepo interface {
 	SavePage(ctx context.Context, page *model.Page) (int64, error)
 	SaveLink(ctx context.Context, parentURL string, childPageID int64) error
 	GetUnvectorized(ctx context.Context) ([]*model.Page, error)
-	WaitForNotification(ctx context.Context) error
+	StartListeningPages(ctx context.Context) (chan bool, chan error)
 }

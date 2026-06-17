@@ -18,63 +18,49 @@ type Index struct {
 	proc     port.Processing
 }
 
-func NewIndex(cfg *model.CrawlConfig, pageRepo port.PageDBRepo, urlRepo port.URLRepo, embedder port.Embedder) *Index {
+func NewIndex(cfg *model.CrawlConfig, pageRepo port.PageDBRepo, urlRepo port.URLRepo, embedder port.Embedder, proc port.Processing) *Index {
 	return &Index{
 		cfg:      cfg,
 		pageRepo: pageRepo,
 		urlRepo:  urlRepo,
 		embedder: embedder,
+		proc:     proc,
 	}
 }
 
 func (uc *Index) Execute(ctx context.Context) {
-	hasWork := make(chan bool, 1)
-	errCh := make(chan error, 1)
+	listenCtx, listenCancel := context.WithCancel(ctx)
+	defer listenCancel()
 
-	go func() {
-		for {
-			done, err := uc.checkDone(ctx)
-			if err != nil {
-				if ctx.Err() != nil {
-					hasWork <- false
-					return
-				}
-				errCh <- err
-				return
-			}
-			if done {
-				hasWork <- false
-				return
-			}
-
-			if err := uc.pageRepo.WaitForNotification(ctx); err != nil {
-				if ctx.Err() != nil {
-					hasWork <- false
-				}
-				errCh <- fmt.Errorf("wait for notification: %w", err)
-				return
-			}
-
-			select {
-			case hasWork <- true:
-			default:
-			}
-		}
-	}()
+	hasWork, errCh := uc.pageRepo.StartListeningPages(listenCtx)
+	errCount := 0
 
 	if err := uc.process(ctx); err != nil {
+		errCount++
 		log.Printf("[WARN] index cold start: %s", err)
 	}
 
 	for {
 		select {
-		case has := <-hasWork:
-			if !has {
+		case <-hasWork:
+			if err := uc.process(ctx); err != nil {
+				errCount++
+				log.Printf("[WARN] index process: %s", err)
+			}
+
+			if errCount > 10 {
+				log.Print("[ERR] index execute: too many errors")
 				return
 			}
 
-			if err := uc.process(ctx); err != nil {
-				log.Printf("[WARN] index process: %s", err)
+			done, err := uc.checkDone(ctx)
+			if err != nil {
+				log.Printf("[ERR] index execute: %s", err)
+				return
+			}
+			if done {
+				log.Printf("[INFO] indexing is finished")
+				return
 			}
 		case err := <-errCh:
 			log.Printf("[ERR] index execute: %s", err)
@@ -101,11 +87,13 @@ func (uc *Index) checkDone(ctx context.Context) (bool, error) {
 
 		crawlMeta, err := uc.urlRepo.GetCrawlMetadata(ctx)
 		if err != nil {
+			lastErr = err
 			continue
 		}
 
 		pages, err := uc.pageRepo.GetUnvectorized(ctx)
 		if err != nil {
+			lastErr = err
 			continue
 		}
 		return crawlMeta.UnprocessedCount == 0 && len(pages) == 0, nil

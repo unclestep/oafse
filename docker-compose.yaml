@@ -17,6 +17,8 @@ services:
         condition: service_started
       oafse-postgres:
         condition: service_healthy
+      oafse-indexer:
+        condition: service_started
 
   oafse-indexer:
     build:
@@ -36,13 +38,23 @@ services:
       oafse-redis:
         condition: service_started
       oafse-embedder:
-        condition: service_started
+        condition: service_healthy
 
   oafse-embedder:
     build:
       context: ./embedder
       dockerfile: Dockerfile.embedder
     container_name: oafse-embedder
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/14445'"]
+      start_period: 30s
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    environment:
+      EMBEDDER_ADDR: ${EMBEDDER_ADDR}
+    ports:
+      - 14445:14445
     networks:
       - oafse-net
 

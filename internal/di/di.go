@@ -145,9 +145,12 @@ var dsMod = fx.Module(
 	fx.Provide(func() (postgresStorage.DBTX, error) {
 		return postgresStorage.NewPool(os.Getenv("POSTGRES_DSN"))
 	}),
-	fx.Provide(func() *postgresStorage.NotifyDS {
-		return postgresStorage.NewNotifyDS(os.Getenv("POSTGRES_DSN"))
-	}),
+	fx.Provide(fx.Annotate(
+		func() *postgresStorage.NotifyDS {
+			return postgresStorage.NewNotifyDS(os.Getenv("POSTGRES_DSN"))
+		},
+		fx.As(new(ds.PageNotifyDS)),
+	)),
 	fx.Provide(fx.Annotate(
 		postgresStorage.NewPageDS,
 		fx.As(new(ds.PageDBDS)),
@@ -207,6 +210,7 @@ func NewIndexer() fx.Option {
 				WorkersCount:    1,
 			}
 		}),
+		domainMod,
 		dsMod,
 		repoMod,
 		embedderMod,
@@ -218,7 +222,7 @@ func NewIndexer() fx.Option {
 				},
 			})
 		}),
-		fx.Invoke(func(lc fx.Lifecycle, idx *usecase.Index, shutdowner fx.Shutdowner) {
+		fx.Invoke(func(lc fx.Lifecycle, idx port.IndexUseCase, shutdowner fx.Shutdowner) {
 			var cancel context.CancelFunc
 
 			lc.Append(fx.Hook{

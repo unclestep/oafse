@@ -58,6 +58,6 @@ func (r *PageRepoDB) GetUnvectorized(ctx context.Context) ([]*domain.Page, error
 	return domainPages, nil
 }
 
-func (r *PageRepoDB) WaitForNotification(ctx context.Context) error {
-	return r.notify.WaitForNotification(ctx)
+func (r *PageRepoDB) StartListeningPages(ctx context.Context) (chan bool, chan error) {
+	return r.notify.StartListening(ctx, "page_inserted")
 }

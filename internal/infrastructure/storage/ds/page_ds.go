@@ -13,5 +13,5 @@ type PageDBDS interface {
 }
 
 type PageNotifyDS interface {
-	WaitForNotification(ctx context.Context) error
+	StartListening(ctx context.Context, music string) (chan bool, chan error)
 }
