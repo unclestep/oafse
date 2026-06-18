@@ -1,5 +1,8 @@
 all:
-	CGO_ENABLED=0 go build -o crawler cmd/main.go
+	CGO_ENABLED=0 go build -o crawler cmd/crawler/main.go
+	CGO_ENABLED=0 go build -o indexer cmd/indexer/main.go
+	swag init -g cmd/server/main.go -o docs
+	CGO_ENABLED=0 go build -o server cmd/server/main.go
 
 setup:
 	@echo "Setting up Chrome/Chromium for SPA tests..."
@@ -30,8 +33,24 @@ test: setup
 	go test ./... -timeout 120s -short
 
 db-check:
-	@. ./.env && psql "$$POSTGRES_LOCAL_DSN" -c "SELECT url, title, crawled_at FROM pages ORDER BY crawled_at DESC LIMIT 20;" \
+	@. ./.env && psql "$$POSTGRES_LOCAL_DSN" -c "SELECT url, title, crawled_at, vector FROM pages ORDER BY crawled_at DESC LIMIT 20;" \
 	                -c "SELECT COUNT(*) AS total_pages FROM pages;" \
 	                -c "SELECT COUNT(*) AS total_links FROM links;"
 
-.PHONY: all setup test db-check
+PYTHON := $(shell command -v python3 2>/dev/null || command -v python 2>/dev/null)
+
+proto:
+	protoc \
+		--go_out=pkg/proto/embedder \
+		--go_opt=paths=source_relative \
+		--go-grpc_out=pkg/proto/embedder \
+		--go-grpc_opt=paths=source_relative \
+		--proto_path=proto/embedder \
+		proto/embedder/embedder.proto
+	$(PYTHON) -m grpc_tools.protoc \
+		--python_out=embedder/proto \
+		--grpc_python_out=embedder/proto \
+		--proto_path=proto/embedder \
+		proto/embedder/embedder.proto
+
+.PHONY: all setup test db-check proto

@@ -34,6 +34,7 @@ type ParseSuite struct {
 	redisContainer *tcredis.RedisContainer
 	pgContainer    *tcpostgres.PostgresContainer
 	rdb            *redis.Client
+	notify         *pg.NotifyDS
 	pool           *pgxpool.Pool
 	tx             pgx.Tx
 	pageDS         *pg.PageDS
@@ -55,7 +56,7 @@ func (s *ParseSuite) SetupSuite() {
 	s.rdb = rdb
 
 	pgContainer, err := tcpostgres.Run(ctx,
-		"postgres:18-alpine",
+		"pgvector/pgvector:pg18",
 		tcpostgres.WithDatabase("testdb"),
 		tcpostgres.WithUsername("dbuser"),
 		tcpostgres.WithPassword("dbpassword"),
@@ -72,6 +73,7 @@ func (s *ParseSuite) SetupSuite() {
 	pool, err := pg.NewPool(pgDSN)
 	s.Require().NoError(err)
 	s.pool = pool
+	s.notify = pg.NewNotifyDS(pgDSN)
 
 	queue := sredis.NewQueue(rdb)
 	retry := sredis.NewRetry(rdb)
@@ -114,7 +116,7 @@ func (s *ParseSuite) newUseCaseWithConfig(client *http.Client, cfg *model.CrawlC
 	fetch := fetcher.NewFetcher(client)
 	proc := service.NewProcessing()
 
-	pageRepo := repo.NewPageRepoDB(s.pageDS)
+	pageRepo := repo.NewPageRepoDB(s.pageDS, s.notify)
 	urlRepo := repo.NewURLRepoCache(s.urlDS)
 
 	return usecase.NewParse(cfg, pageRepo, urlRepo, proc, fetch, ext)

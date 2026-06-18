@@ -1,0 +1,15 @@
+FROM python:3.14-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
+    && pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+ENV PYTHONPATH=/app/proto
+
+RUN useradd --create-home --uid 10001 embedderuser
+USER embedderuser
+
+ENTRYPOINT ["python", "main.py"]

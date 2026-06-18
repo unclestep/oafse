@@ -12,6 +12,7 @@ func ToDomainPage(page *storage.PageDB) *domain.Page {
 		Description: page.Description,
 		Content:     page.Content,
 		CrawledAt:   page.CrawledAt,
+		Vector:      page.Vector,
 	}
 }
 
@@ -22,5 +23,6 @@ func ToStoragePage(page *domain.Page) *storage.PageDB {
 		Description: page.Description,
 		Content:     page.Content,
 		CrawledAt:   page.CrawledAt,
+		Vector:      page.Vector,
 	}
 }

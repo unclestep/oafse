@@ -2,6 +2,7 @@ package di
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -9,9 +10,13 @@ import (
 
 	"oafse/internal/application/port"
 	"oafse/internal/application/usecase"
+	deliveryhttp "oafse/internal/delivery/http"
+	"oafse/internal/delivery/http/handler"
+	"oafse/internal/delivery/http/middleware"
 	"oafse/internal/delivery/worker"
 	"oafse/internal/domain/model"
 	"oafse/internal/domain/service"
+	"oafse/internal/infrastructure/embedder"
 	"oafse/internal/infrastructure/extractor"
 	"oafse/internal/infrastructure/fetcher"
 	"oafse/internal/infrastructure/storage/ds"
@@ -24,7 +29,7 @@ import (
 	"go.uber.org/fx"
 )
 
-func NewCrawler(startURL string, resume bool) fx.Option {
+func NewCrawler(startURL string, reindex bool) fx.Option {
 	return fx.Module(
 		"crawler",
 		fx.Provide(func() *model.CrawlConfig {
@@ -41,7 +46,7 @@ func NewCrawler(startURL string, resume bool) fx.Option {
 		domainMod,
 		repoMod,
 		dsMod,
-		appMod,
+		crawlAppMod,
 		workerMod,
 		fx.Invoke(func(lc fx.Lifecycle, urlRepo port.URLRepo, cfg *model.CrawlConfig) {
 			var cancel context.CancelFunc
@@ -51,7 +56,7 @@ func NewCrawler(startURL string, resume bool) fx.Option {
 					appCtx, canc := context.WithCancel(context.Background())
 					cancel = canc
 
-					if !resume {
+					if reindex {
 						if err := urlRepo.ResetCrawlCache(ctx); err != nil {
 							return err
 						}
@@ -145,6 +150,12 @@ var dsMod = fx.Module(
 		return postgresStorage.NewPool(os.Getenv("POSTGRES_DSN"))
 	}),
 	fx.Provide(fx.Annotate(
+		func() *postgresStorage.NotifyDS {
+			return postgresStorage.NewNotifyDS(os.Getenv("POSTGRES_DSN"))
+		},
+		fx.As(new(ds.PageNotifyDS)),
+	)),
+	fx.Provide(fx.Annotate(
 		postgresStorage.NewPageDS,
 		fx.As(new(ds.PageDBDS)),
 	)),
@@ -162,7 +173,7 @@ var dsMod = fx.Module(
 	)),
 )
 
-var appMod = fx.Module(
+var crawlAppMod = fx.Module(
 	"application",
 	fx.Provide(fx.Annotate(
 		usecase.NewParse,
@@ -174,3 +185,123 @@ var workerMod = fx.Module(
 	"worker",
 	fx.Provide(worker.NewWorkerPool),
 )
+
+var embedderMod = fx.Module(
+	"embedder",
+	fx.Provide(fx.Annotate(
+		func() (*embedder.Embedder, error) {
+			return embedder.NewEmbedder(os.Getenv("EMBEDDER_URL"))
+		},
+		fx.As(new(port.Embedder)),
+	)),
+)
+
+var indexAppMod = fx.Module(
+	"index",
+	fx.Provide(fx.Annotate(
+		usecase.NewIndex,
+		fx.As(new(port.IndexUseCase)),
+	)),
+)
+
+func NewIndexer() fx.Option {
+	return fx.Module(
+		"indexer",
+		fx.Provide(func() *model.CrawlConfig {
+			return &model.CrawlConfig{
+				TryLim:          5,
+				TryBaseInterval: 1 * time.Second,
+				WorkersCount:    1,
+			}
+		}),
+		domainMod,
+		dsMod,
+		repoMod,
+		embedderMod,
+		indexAppMod,
+		fx.Invoke(func(lc fx.Lifecycle, embedder port.Embedder) {
+			lc.Append(fx.Hook{
+				OnStop: func(ctx context.Context) error {
+					return embedder.Close()
+				},
+			})
+		}),
+		fx.Invoke(func(lc fx.Lifecycle, idx port.IndexUseCase, shutdowner fx.Shutdowner) {
+			var cancel context.CancelFunc
+
+			lc.Append(fx.Hook{
+				OnStart: func(ctx context.Context) error {
+					appCtx, canc := context.WithCancel(context.Background())
+					cancel = canc
+
+					go func() {
+						idx.Execute(appCtx)
+						if err := shutdowner.Shutdown(); err != nil {
+							log.Printf("[ERROR] shutdown: %s", err)
+						}
+					}()
+
+					return nil
+				},
+				OnStop: func(ctx context.Context) error {
+					cancel()
+					return nil
+				},
+			})
+		}),
+	)
+}
+
+var queryAppMod = fx.Module(
+	"application",
+	fx.Provide(fx.Annotate(
+		usecase.NewQuery,
+		fx.As(new(port.QueryUseCase)),
+	)),
+)
+
+var httpMod = fx.Module(
+	"http",
+	fx.Provide(fx.Annotate(
+		handler.NewQueryHandler,
+		fx.As(new(http.Handler)),
+	)),
+	fx.Provide(deliveryhttp.NewRouter),
+	fx.Invoke(registerServer),
+)
+
+func registerServer(lc fx.Lifecycle, router *deliveryhttp.Router) {
+	server := http.Server{
+		Handler:      middleware.WithRecovery(router.Handler()),
+		Addr:         os.Getenv("SERVER_ADDR"),
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	lc.Append(fx.Hook{
+		OnStart: func(ctx context.Context) error {
+			go func() {
+				if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+					log.Printf("server error: %s", err)
+				}
+			}()
+			log.Printf("\nserver has started on: %s", os.Getenv("SERVER_ADDR"))
+			return nil
+		},
+		OnStop: func(ctx context.Context) error {
+			return server.Shutdown(ctx)
+		},
+	})
+}
+
+func NewServer() fx.Option {
+	return fx.Module(
+		"server",
+		dsMod,
+		repoMod,
+		embedderMod,
+		queryAppMod,
+		httpMod,
+	)
+}

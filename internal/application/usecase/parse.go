@@ -79,7 +79,7 @@ func (uc *Parse) Execute(ctx context.Context, workerID string) (*port.ParseCmd, 
 	}
 
 	if fd.Status == port.FetchRetry {
-		retry, retryAt := uc.proc.DecideRetry(url, uc.cfg)
+		retry, retryAt := uc.proc.CalcRetryTime(url.Try, uc.cfg)
 		if !retry {
 			return giveUp(url, fmt.Errorf("retry limit exceeded: cur %d, threshold %d", url.Try, uc.cfg.TryLim))
 		}

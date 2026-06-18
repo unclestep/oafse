@@ -26,7 +26,7 @@ func (s *PostgresSuite) SetupSuite() {
 	ctx := context.Background()
 
 	container, err := postgres.Run(ctx,
-		"postgres:18-alpine",
+		"pgvector/pgvector:pg18",
 		postgres.WithDatabase("testdb"),
 		postgres.WithUsername("dbuser"),
 		postgres.WithPassword("dbpassword"),
