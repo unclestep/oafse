@@ -83,7 +83,7 @@ func (s *PageDS) PageExists(parent context.Context, url string) (bool, error) {
 func (s *PageDS) InsertPage(parent context.Context, page *storage.PageDB) (int64, error) {
 	query := `
 		INSERT INTO pages (url, title, description, content, crawled_at, vector)
-		VALUES ($1, $2, $3, $4, $5, l2_normalize($6))
+		VALUES ($1, $2, $3, $4, $5, l2_normalize($6::vector))
 		ON CONFLICT (url) DO UPDATE SET
 			title = EXCLUDED.title,
 			description = EXCLUDED.description,

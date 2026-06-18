@@ -262,7 +262,10 @@ var queryAppMod = fx.Module(
 
 var httpMod = fx.Module(
 	"http",
-	fx.Provide(handler.NewQueryHandler),
+	fx.Provide(fx.Annotate(
+		handler.NewQueryHandler,
+		fx.As(new(http.Handler)),
+	)),
 	fx.Provide(deliveryhttp.NewRouter),
 	fx.Invoke(registerServer),
 )
