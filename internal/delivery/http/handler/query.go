@@ -44,8 +44,8 @@ func (h *QueryHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		limit = 10
 	} else {
 		limitTmp, err := strconv.Atoi(limitStr)
-		if err != nil {
-			j.WriteError(w, "limit should be a number", http.StatusBadRequest)
+		if err != nil || limitTmp <= 0 {
+			j.WriteError(w, "limit should be a natural number", http.StatusBadRequest)
 			return
 		}
 		limit = limitTmp

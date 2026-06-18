@@ -38,6 +38,8 @@ func (uc *Index) Execute(ctx context.Context) {
 	if err := uc.process(ctx); err != nil {
 		errCount++
 		log.Printf("[WARN] index cold start: %s", err)
+	} else {
+		errCount = 0
 	}
 
 	for {
@@ -46,6 +48,8 @@ func (uc *Index) Execute(ctx context.Context) {
 			if err := uc.process(ctx); err != nil {
 				errCount++
 				log.Printf("[WARN] index process: %s", err)
+			} else {
+				errCount = 0
 			}
 
 			if errCount > 10 {
@@ -77,10 +81,12 @@ func (uc *Index) checkDone(ctx context.Context) (bool, error) {
 	for i := 0; i < uc.cfg.TryLim; i++ {
 		if i > 0 {
 			_, retryAt := uc.proc.CalcRetryTime(i, uc.cfg)
-			t := time.NewTicker(time.Until(retryAt))
+
+			t := time.NewTimer(time.Until(retryAt))
 			select {
 			case <-t.C:
 			case <-ctx.Done():
+				t.Stop()
 				return false, ctx.Err()
 			}
 		}

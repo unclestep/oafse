@@ -2,6 +2,7 @@ package json
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 )
 
@@ -23,7 +24,7 @@ func WriteJSON(w http.ResponseWriter, v any, status int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(v); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		log.Printf("[ERR] write response json: %s", err.Error())
 	}
 }
 

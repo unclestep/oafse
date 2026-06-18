@@ -14,7 +14,6 @@ func NewRouter(queryHandler http.Handler) *Router {
 	mux := http.NewServeMux()
 
 	mux.Handle("/swagger/", httpSwagger.WrapHandler)
-
 	mux.Handle("GET /search", queryHandler)
 
 	return &Router{mux: mux}

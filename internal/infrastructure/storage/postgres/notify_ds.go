@@ -25,10 +25,10 @@ func (s *NotifyDS) sleepWithContext(ctx context.Context, delay time.Duration) {
 	}
 }
 
-func (s *NotifyDS) StartListening(ctx context.Context, music string) (chan bool, chan error) {
+func (s *NotifyDS) StartListening(ctx context.Context, channel string) (chan bool, chan error) {
 	hasWork := make(chan bool, 1)
 	errCh := make(chan error, 1)
-	query := fmt.Sprintf(`LISTEN %s`, pgx.Identifier{music}.Sanitize())
+	query := fmt.Sprintf(`LISTEN %s`, pgx.Identifier{channel}.Sanitize())
 
 	go func() {
 		for {
@@ -58,6 +58,7 @@ func (s *NotifyDS) StartListening(ctx context.Context, music string) (chan bool,
 					return
 				default:
 				}
+				s.sleepWithContext(ctx, 5*time.Second)
 				continue
 			}
 
@@ -71,6 +72,7 @@ func (s *NotifyDS) StartListening(ctx context.Context, music string) (chan bool,
 						return
 					default:
 					}
+					s.sleepWithContext(ctx, 1*time.Second)
 					break
 				}
 

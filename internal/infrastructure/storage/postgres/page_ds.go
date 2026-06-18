@@ -150,7 +150,7 @@ func (s *PageDS) GetUnvectorized(parent context.Context) ([]*storage.PageDB, err
 		return nil, fmt.Errorf("get unvectorized: %w", err)
 	}
 
-	return pages, err
+	return pages, nil
 }
 
 func (s *PageDS) FindSimilar(parent context.Context, queryVector []float32, limit int) ([]*storage.PageDB, error) {
