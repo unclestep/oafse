@@ -2,7 +2,7 @@ all:
 	CGO_ENABLED=0 go build -o crawler cmd/crawler/main.go
 	CGO_ENABLED=0 go build -o indexer cmd/indexer/main.go
 	swag init -g cmd/server/main.go -o docs
-	CGO_ENABLED=0 go build -o indexer cmd/server/main.go
+	CGO_ENABLED=0 go build -o server cmd/server/main.go
 
 setup:
 	@echo "Setting up Chrome/Chromium for SPA tests..."

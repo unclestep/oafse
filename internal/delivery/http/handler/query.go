@@ -31,8 +31,8 @@ func NewQueryHandler(uc port.QueryUseCase) *QueryHandler {
 // @Failure      500    {object} json.ErrorResponse
 // @Router       /search [get]
 func (h *QueryHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	query := r.PathValue("q")
-	limitStr := r.PathValue("limit")
+	query := r.URL.Query().Get("q")
+	limitStr := r.URL.Query().Get("limit")
 
 	if query == "" {
 		j.WriteError(w, "missing query parameter 'q'", http.StatusBadRequest)

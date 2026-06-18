@@ -25,6 +25,7 @@ func main() {
 	helpers.FallbackEnv("POSTGRES_DSN", "POSTGRES_LOCAL_DSN")
 	helpers.FallbackEnv("REDIS_DSN", "REDIS_LOCAL_DSN")
 	helpers.FallbackEnv("EMBEDDER_URL", "EMBEDDER_LOCAL_URL")
+	helpers.FallbackEnv("SERVER_ADDR", "SERVER_LOCAL_URL")
 
 	if err := postgres.Migrate(os.Getenv("POSTGRES_DSN")); err != nil {
 		log.Fatalf("migration failed: %s", err)

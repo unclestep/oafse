@@ -10,7 +10,7 @@ services:
     environment:
       POSTGRES_DSN: ${POSTGRES_DOCKER_DSN}
       EMBEDDER_URL: ${EMBEDDER_DOCKER_URL}
-      SERVER_ARRT: ${SERVER_ADDR}
+      SERVER_ADDR: ${SERVER_ADDR}
     networks:
       - oafse-net
     depends_on:
