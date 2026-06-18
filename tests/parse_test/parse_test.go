@@ -56,7 +56,7 @@ func (s *ParseSuite) SetupSuite() {
 	s.rdb = rdb
 
 	pgContainer, err := tcpostgres.Run(ctx,
-		"postgres:18-alpine",
+		"pgvector/pgvector:pg18",
 		tcpostgres.WithDatabase("testdb"),
 		tcpostgres.WithUsername("dbuser"),
 		tcpostgres.WithPassword("dbpassword"),

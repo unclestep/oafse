@@ -29,7 +29,7 @@ import (
 	"go.uber.org/fx"
 )
 
-func NewCrawler(startURL string, resume bool) fx.Option {
+func NewCrawler(startURL string, reindex bool) fx.Option {
 	return fx.Module(
 		"crawler",
 		fx.Provide(func() *model.CrawlConfig {
@@ -56,7 +56,7 @@ func NewCrawler(startURL string, resume bool) fx.Option {
 					appCtx, canc := context.WithCancel(context.Background())
 					cancel = canc
 
-					if !resume {
+					if reindex {
 						if err := urlRepo.ResetCrawlCache(ctx); err != nil {
 							return err
 						}

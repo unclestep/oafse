@@ -15,7 +15,7 @@ import (
 
 func main() {
 	startURL := flag.String("u", "https://quotes.toscrape.com", "Start URL for crawling")
-	resume := flag.Bool("resume", false, "Resume crawling")
+	reindex := flag.Bool("reindex", false, "Reindex the domain")
 	flag.Parse()
 
 	_ = godotenv.Load(".env")
@@ -31,5 +31,5 @@ func main() {
 		log.Fatalf("invalid start URL: %s", err)
 	}
 
-	fx.New(di.NewCrawler(baseURL, *resume)).Run()
+	fx.New(di.NewCrawler(baseURL, *reindex)).Run()
 }

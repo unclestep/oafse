@@ -134,6 +134,7 @@ func (s *PageDS) GetUnvectorized(parent context.Context) ([]*storage.PageDB, err
 		SELECT url, title, description, content, crawled_at
 		FROM pages
 		WHERE vector IS NULL
+			AND (title <> '' OR description <> '' OR content <> '')
 	`
 
 	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
@@ -153,18 +154,23 @@ func (s *PageDS) GetUnvectorized(parent context.Context) ([]*storage.PageDB, err
 }
 
 func (s *PageDS) FindSimilar(parent context.Context, queryVector []float32, limit int) ([]*storage.PageDB, error) {
+	// pgvector's <#> is the negative inner product; for L2-normalized vectors
+	// this equals -cosine_similarity, ranging -1 (identical) to 1 (opposite).
+	const minSimilarity = -0.3
+
 	query := `
-		SELECT url, title, description, content, crawled_at
+		SELECT url, title, description, content, crawled_at, vector
 		FROM pages
 		WHERE vector IS NOT NULL
-		ORDER BY vector <#> l2_normalize($1)
-		LIMIT $2
+			AND vector <#> l2_normalize($1::vector) < $2
+		ORDER BY vector <#> l2_normalize($1::vector)
+		LIMIT $3
 	`
 
 	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
 	defer cancel()
 
-	rows, err := s.dbtx.Query(ctx, query, pgvector.NewVector(queryVector), limit)
+	rows, err := s.dbtx.Query(ctx, query, pgvector.NewVector(queryVector), minSimilarity, limit)
 	if err != nil {
 		return nil, fmt.Errorf("find similar: %w", err)
 	}
