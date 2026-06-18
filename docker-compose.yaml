@@ -1,4 +1,24 @@
 services:
+  oafse-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: oafse-server
+    env_file: ".env"
+    ports:
+      - 14444:14444
+    environment:
+      POSTGRES_DSN: ${POSTGRES_DOCKER_DSN}
+      EMBEDDER_URL: ${EMBEDDER_DOCKER_URL}
+      SERVER_ARRT: ${SERVER_ADDR}
+    networks:
+      - oafse-net
+    depends_on:
+      oafse-embedder:
+        condition: service_healthy
+      oafse-postgres:
+        condition: service_healthy
+
   oafse-crawler:
     build:
       context: .
@@ -8,8 +28,6 @@ services:
     environment:
       POSTGRES_DSN: ${POSTGRES_DOCKER_DSN}
       REDIS_DSN: ${REDIS_DOCKER_DSN}
-    ports:
-      - 14444:14444
     networks:
       - oafse-net
     depends_on:
@@ -29,7 +47,7 @@ services:
     environment:
       POSTGRES_DSN: ${POSTGRES_DOCKER_DSN}
       REDIS_DSN: ${REDIS_DOCKER_DSN}
-      EMBEDDER_DSN: ${EMBEDDER_DOCKER_DSN}
+      EMBEDDER_URL: ${EMBEDDER_DOCKER_URL}
     networks:
       - oafse-net
     depends_on:
@@ -67,7 +85,7 @@ services:
       - oafse-net
 
   oafse-postgres:
-    image: postgres:18-alpine
+    image: pgvector/pgvector:pg18
     container_name: oafse_postgres
     env_file: ".env"
     ports:

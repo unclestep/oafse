@@ -2,6 +2,7 @@ package di
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -9,6 +10,9 @@ import (
 
 	"oafse/internal/application/port"
 	"oafse/internal/application/usecase"
+	deliveryhttp "oafse/internal/delivery/http"
+	"oafse/internal/delivery/http/handler"
+	"oafse/internal/delivery/http/middleware"
 	"oafse/internal/delivery/worker"
 	"oafse/internal/domain/model"
 	"oafse/internal/domain/service"
@@ -186,7 +190,7 @@ var embedderMod = fx.Module(
 	"embedder",
 	fx.Provide(fx.Annotate(
 		func() (*embedder.Embedder, error) {
-			return embedder.NewEmbedder(os.Getenv("EMBEDDER_DSN"))
+			return embedder.NewEmbedder(os.Getenv("EMBEDDER_URL"))
 		},
 		fx.As(new(port.Embedder)),
 	)),
@@ -245,5 +249,56 @@ func NewIndexer() fx.Option {
 				},
 			})
 		}),
+	)
+}
+
+var queryAppMod = fx.Module(
+	"application",
+	fx.Provide(fx.Annotate(
+		usecase.NewQuery,
+		fx.As(new(port.QueryUseCase)),
+	)),
+)
+
+var httpMod = fx.Module(
+	"http",
+	fx.Provide(handler.NewQueryHandler),
+	fx.Provide(deliveryhttp.NewRouter),
+	fx.Invoke(registerServer),
+)
+
+func registerServer(lc fx.Lifecycle, router *deliveryhttp.Router) {
+	server := http.Server{
+		Handler:      middleware.WithRecovery(router.Handler()),
+		Addr:         os.Getenv("SERVER_ADDR"),
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	lc.Append(fx.Hook{
+		OnStart: func(ctx context.Context) error {
+			go func() {
+				if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+					log.Printf("server error: %s", err)
+				}
+			}()
+			log.Printf("\nserver has started on: %s", os.Getenv("SERVER_ADDR"))
+			return nil
+		},
+		OnStop: func(ctx context.Context) error {
+			return server.Shutdown(ctx)
+		},
+	})
+}
+
+func NewServer() fx.Option {
+	return fx.Module(
+		"server",
+		dsMod,
+		repoMod,
+		embedderMod,
+		queryAppMod,
+		httpMod,
 	)
 }

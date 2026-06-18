@@ -1,0 +1,25 @@
+FROM golang:1.26-alpine AS builder
+
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+
+RUN go install github.com/swaggo/swag/cmd/swag@latest
+
+COPY . .
+
+RUN swag init -g cmd/server/main.go -o docs
+RUN CGO_ENABLED=0 go build -o server ./cmd/server
+RUN chmod +x /app/server
+
+FROM alpine:latest
+
+RUN apk add --no-cache ca-certificates
+
+RUN adduser -D -u 10001 serveruser
+WORKDIR /app
+
+COPY --from=builder --chown=serveruser:serveruser /app/server .
+
+USER 10001:10001
+ENTRYPOINT ["/app/server"]

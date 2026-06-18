@@ -35,4 +35,5 @@ type PageDBRepo interface {
 	SaveLink(ctx context.Context, parentURL string, childPageID int64) error
 	GetUnvectorized(ctx context.Context) ([]*model.Page, error)
 	StartListeningPages(ctx context.Context) (chan bool, chan error)
+	FindSimilar(ctx context.Context, queryVector []float32, limit int) ([]*model.Page, error)
 }

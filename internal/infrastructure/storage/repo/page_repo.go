@@ -61,3 +61,17 @@ func (r *PageRepoDB) GetUnvectorized(ctx context.Context) ([]*domain.Page, error
 func (r *PageRepoDB) StartListeningPages(ctx context.Context) (chan bool, chan error) {
 	return r.notify.StartListening(ctx, "page_inserted")
 }
+
+func (r *PageRepoDB) FindSimilar(ctx context.Context, queryVector []float32, limit int) ([]*domain.Page, error) {
+	storagePages, err := r.s.FindSimilar(ctx, queryVector, limit)
+	if err != nil {
+		return nil, fmt.Errorf("find similar: %w", err)
+	}
+
+	domainPages := make([]*domain.Page, len(storagePages))
+	for i, page := range storagePages {
+		domainPages[i] = mapper.ToDomainPage(page)
+	}
+
+	return domainPages, nil
+}

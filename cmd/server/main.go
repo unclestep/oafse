@@ -10,8 +10,16 @@ import (
 	"oafse/cmd/helpers"
 	"oafse/internal/di"
 	"oafse/internal/infrastructure/storage/postgres"
+
+	_ "oafse/docs"
 )
 
+// @title           oafse Search API
+// @version         1.0
+// @description     Semantic search engine over crawled web pages.
+// @host            localhost:14444
+// @BasePath        /
+// @produce         json
 func main() {
 	_ = godotenv.Load(".env")
 	helpers.FallbackEnv("POSTGRES_DSN", "POSTGRES_LOCAL_DSN")
@@ -22,5 +30,5 @@ func main() {
 		log.Fatalf("migration failed: %s", err)
 	}
 
-	fx.New(di.NewIndexer()).Run()
+	fx.New(di.NewServer()).Run()
 }
