@@ -132,6 +132,8 @@ services:
   oafse-grafana:
     image: grafana/grafana:latest
     container_name: oafse_grafana
+    environment:
+      GF_DASHBOARDS_MIN_REFRESH_INTERVAL: 1s
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - oafse-grafana-data:/var/lib/grafana
