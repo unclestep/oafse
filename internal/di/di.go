@@ -11,7 +11,8 @@ import (
 	"oafse/internal/application/port"
 	"oafse/internal/application/usecase"
 	deliveryhttp "oafse/internal/delivery/http"
-	"oafse/internal/delivery/http/handler"
+	"oafse/internal/delivery/http/handler/crawl"
+	"oafse/internal/delivery/http/handler/search"
 	"oafse/internal/delivery/http/middleware"
 	"oafse/internal/delivery/worker"
 	"oafse/internal/domain/model"
@@ -279,7 +280,7 @@ var queryAppMod = fx.Module(
 var httpMod = fx.Module(
 	"http",
 	fx.Provide(fx.Annotate(
-		handler.NewQueryHandler,
+		search.NewQueryHandler,
 		fx.As(new(http.Handler)),
 		fx.ResultTags(`name:"queryHandler"`),
 	)),
@@ -339,7 +340,7 @@ var metricsMod = fx.Module(
 var crawlControlMod = fx.Module(
 	"crawl-control",
 	fx.Provide(fx.Annotate(
-		handler.NewCrawlHandler,
+		crawl.NewCrawlHandler,
 		fx.As(new(http.Handler)),
 		fx.ResultTags(`name:"crawlHandler"`),
 	)),

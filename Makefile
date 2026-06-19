@@ -1,8 +1,17 @@
-all:
+all: docs-server docs-crawler
 	CGO_ENABLED=0 go build -o crawler cmd/crawler/main.go
 	CGO_ENABLED=0 go build -o indexer cmd/indexer/main.go
-	swag init -g cmd/server/main.go -o docs
 	CGO_ENABLED=0 go build -o server cmd/server/main.go
+
+docs-server:
+	swag init -g main.go \
+		-d ./cmd/server,./internal/delivery/http/handler/search,./internal/delivery/http/json \
+		-o docs
+
+docs-crawler:
+	swag init -g main.go \
+		-d ./cmd/crawler,./internal/delivery/http/handler/crawl,./internal/delivery/http/json \
+		-o docs/crawler
 
 setup:
 	@echo "Setting up Chrome/Chromium for SPA tests..."
@@ -53,4 +62,4 @@ proto:
 		--proto_path=proto/embedder \
 		proto/embedder/embedder.proto
 
-.PHONY: all setup test db-check proto
+.PHONY: all docs-server docs-crawler setup test db-check proto

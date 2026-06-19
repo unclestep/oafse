@@ -60,55 +60,6 @@
                     }
                 }
             }
-        },
-        "/search": {
-            "get": {
-                "description": "Embeds the query via SBERT and returns the most similar pages ranked by dot product.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "search"
-                ],
-                "summary": "Semantic search",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "example": "machine learning",
-                        "description": "Search query",
-                        "name": "q",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "example": 10,
-                        "description": "Max results (default 10)",
-                        "name": "limit",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/json.SearchResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/json.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/json.ErrorResponse"
-                        }
-                    }
-                }
-            }
         }
     },
     "definitions": {
@@ -128,31 +79,6 @@
             "properties": {
                 "error": {
                     "type": "string"
-                }
-            }
-        },
-        "json.Page": {
-            "type": "object",
-            "properties": {
-                "description": {
-                    "type": "string"
-                },
-                "title": {
-                    "type": "string"
-                },
-                "url": {
-                    "type": "string"
-                }
-            }
-        },
-        "json.SearchResponse": {
-            "type": "object",
-            "properties": {
-                "pages": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/json.Page"
-                    }
                 }
             }
         }
