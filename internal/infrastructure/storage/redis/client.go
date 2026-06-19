@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -31,6 +32,11 @@ func NewClient(databaseURL string) (*redis.Client, error) {
 	if err != nil {
 		rdb.Close() //nolint:errcheck
 		return nil, err
+	}
+
+	if err := rdb.ConfigSet(ctx, "notify-keyspace-events", "KEA").Err(); err != nil {
+		rdb.Close() //nolint:errcheck
+		return nil, fmt.Errorf("config set notify-keyspace-events: %w", err)
 	}
 
 	return rdb, nil

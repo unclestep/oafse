@@ -29,6 +29,7 @@ type URLRepo interface {
 	MarkProcessed(ctx context.Context, url string, status model.CrawlStatus) error
 	GetCrawlMetadata(ctx context.Context) (*CrawlMetadata, error)
 	ResetCrawlCache(ctx context.Context) error
+	Subscribe(ctx context.Context) (<-chan struct{}, error)
 }
 
 type PageDBRepo interface {

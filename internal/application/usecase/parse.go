@@ -72,12 +72,9 @@ func (uc *Parse) Execute(ctx context.Context, workerID string) (*port.ParseCmd, 
 			if !md.EarliestRetry.IsZero() {
 				retryAt = md.EarliestRetry
 			}
-			return &port.ParseCmd{Directive: port.DirectiveSleep, SleepFor: time.Until(retryAt)}, nil
+			return &port.ParseCmd{SleepFor: time.Until(retryAt)}, nil
 		}
-		return &port.ParseCmd{
-			Directive: port.DirectiveStop,
-			SleepFor:  0,
-		}, nil
+		return &port.ParseCmd{}, nil
 	}
 	if err != nil {
 		return nil, wrap(err)

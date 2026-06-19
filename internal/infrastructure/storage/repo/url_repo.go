@@ -101,3 +101,7 @@ func (r *URLRepoCache) GetCrawlMetadata(ctx context.Context) (*port.CrawlMetadat
 func (r *URLRepoCache) ResetCrawlCache(ctx context.Context) error {
 	return r.s.ResetCrawlCache(ctx)
 }
+
+func (r *URLRepoCache) Subscribe(ctx context.Context) (<-chan struct{}, error) {
+	return r.s.Subscribe(ctx)
+}

@@ -14,14 +14,16 @@ import (
 )
 
 type Worker struct {
-	id    string
-	parse port.ParseUseCase
+	id      string
+	parse   port.ParseUseCase
+	urlRepo port.URLRepo
 }
 
-func NewWorker(id string, parse port.ParseUseCase) *Worker {
+func NewWorker(id string, parse port.ParseUseCase, urlRepo port.URLRepo) *Worker {
 	return &Worker{
-		id:    id,
-		parse: parse,
+		id:      id,
+		parse:   parse,
+		urlRepo: urlRepo,
 	}
 }
 
@@ -30,10 +32,10 @@ type WorkerPool struct {
 	workers []*Worker
 }
 
-func NewWorkerPool(cfg *model.CrawlConfig, parse port.ParseUseCase) *WorkerPool {
+func NewWorkerPool(cfg *model.CrawlConfig, parse port.ParseUseCase, urlRepo port.URLRepo) *WorkerPool {
 	workers := make([]*Worker, cfg.WorkersCount)
 	for i := range cfg.WorkersCount {
-		workers[i] = NewWorker(strconv.Itoa(i), parse)
+		workers[i] = NewWorker(strconv.Itoa(i), parse, urlRepo)
 	}
 
 	pool := &WorkerPool{
@@ -54,6 +56,12 @@ func (p *WorkerPool) Run(ctx context.Context) {
 }
 
 func (w *Worker) run(parent context.Context) {
+	notify, err := w.urlRepo.Subscribe(parent)
+	if err != nil {
+		log.Printf("[ERR] worker run: subscribe: %s", err)
+		return
+	}
+
 	for {
 		ctx, cancel := context.WithTimeout(parent, 15*time.Second)
 
@@ -84,17 +92,22 @@ func (w *Worker) run(parent context.Context) {
 			if cmd == nil {
 				break
 			}
-			switch cmd.Directive {
-			case port.DirectiveSleep:
+			if cmd.SleepFor > 0 {
 				timer := time.NewTimer(cmd.SleepFor)
 				select {
 				case <-timer.C:
+				case <-notify:
+					timer.Stop()
 				case <-parent.Done():
 					timer.Stop()
 					return
 				}
-			case port.DirectiveStop:
-				return
+			} else {
+				select {
+				case <-notify:
+				case <-parent.Done():
+					return
+				}
 			}
 		case <-ctx.Done():
 			cancel()

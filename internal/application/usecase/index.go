@@ -7,25 +7,20 @@ import (
 	"time"
 
 	"oafse/internal/application/port"
-	"oafse/internal/domain/model"
 	"oafse/internal/infrastructure/metrics"
 )
 
 type Index struct {
-	cfg      *model.CrawlConfig
 	pageRepo port.PageDBRepo
 	urlRepo  port.URLRepo
 	embedder port.Embedder
-	proc     port.Processing
 }
 
-func NewIndex(cfg *model.CrawlConfig, pageRepo port.PageDBRepo, urlRepo port.URLRepo, embedder port.Embedder, proc port.Processing) *Index {
+func NewIndex(pageRepo port.PageDBRepo, urlRepo port.URLRepo, embedder port.Embedder) *Index {
 	return &Index{
-		cfg:      cfg,
 		pageRepo: pageRepo,
 		urlRepo:  urlRepo,
 		embedder: embedder,
-		proc:     proc,
 	}
 }
 
@@ -34,6 +29,13 @@ func (uc *Index) Execute(ctx context.Context) {
 	defer listenCancel()
 
 	hasWork, errCh := uc.pageRepo.StartListeningPages(listenCtx)
+
+	queueInsert, err := uc.urlRepo.Subscribe(listenCtx)
+	if err != nil {
+		log.Printf("[ERR] index execute: subscribe: %s", err)
+		return
+	}
+
 	errCount := 0
 
 	if err := uc.process(ctx); err != nil {
@@ -52,61 +54,25 @@ func (uc *Index) Execute(ctx context.Context) {
 			} else {
 				errCount = 0
 			}
-
-			if errCount > 10 {
-				log.Print("[ERR] index execute: too many errors")
-				return
-			}
-
-			done, err := uc.checkDone(ctx)
-			if err != nil {
-				log.Printf("[ERR] index execute: %s", err)
-				return
-			}
-			if done {
-				log.Printf("[INFO] indexing is finished")
-				return
+		case <-queueInsert:
+			if err := uc.process(ctx); err != nil {
+				errCount++
+				log.Printf("[WARN] index process: %s", err)
+			} else {
+				errCount = 0
 			}
 		case err := <-errCh:
-			log.Printf("[ERR] index execute: %s", err)
-			return
+			errCount++
+			log.Printf("[WARN] index execute: listen: %s", err)
 		case <-ctx.Done():
 			return
 		}
+
+		if errCount > 10 {
+			log.Print("[ERR] index execute: too many errors")
+			return
+		}
 	}
-}
-
-func (uc *Index) checkDone(ctx context.Context) (bool, error) {
-	var lastErr error
-
-	for i := 0; i < uc.cfg.TryLim; i++ {
-		if i > 0 {
-			_, retryAt := uc.proc.CalcRetryTime(i, uc.cfg)
-
-			t := time.NewTimer(time.Until(retryAt))
-			select {
-			case <-t.C:
-			case <-ctx.Done():
-				t.Stop()
-				return false, ctx.Err()
-			}
-		}
-
-		crawlMeta, err := uc.urlRepo.GetCrawlMetadata(ctx)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-
-		pages, err := uc.pageRepo.GetUnvectorized(ctx)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		return crawlMeta.UnprocessedCount == 0 && len(pages) == 0, nil
-	}
-
-	return false, fmt.Errorf("after %d retries there is still a problem with repos, last error: %w", uc.cfg.TryLim, lastErr)
 }
 
 func (uc *Index) process(parent context.Context) error {
