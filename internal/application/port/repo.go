@@ -12,7 +12,7 @@ var (
 	ErrQueueEmpty   = errors.New("queue is empty")
 	ErrPageNotFound = errors.New("page not found")
 	ErrDontWait     = errors.New("dont wait")
-	ErrTransient = errors.New("transient error")
+	ErrTransient    = errors.New("transient error")
 )
 
 type CrawlMetadata struct {

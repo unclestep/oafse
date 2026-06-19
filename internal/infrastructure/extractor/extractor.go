@@ -35,7 +35,10 @@ func (e *Extractor) Extract(fetchData *port.FetchData) (*model.Page, []*model.UR
 
 	links := e.extractLinks(doc, fetchData.FinalURL)
 
-	art, err := e.parser.Parse(bytes.NewReader(fetchData.Raw), fetchData.FinalURL.URL)
+	// It's not safe to share one instance across concurrently running workers,
+	// so each gets its own copy of the config.
+	parser := *e.parser
+	art, err := parser.Parse(bytes.NewReader(fetchData.Raw), fetchData.FinalURL.URL)
 	if err != nil {
 		return nil, nil, wrap(err)
 	}

@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"log"
+	"runtime/debug"
 	"strconv"
 	"sync"
 	"time"
@@ -59,9 +60,17 @@ func (w *Worker) run(parent context.Context) {
 		ch := make(chan *port.ParseCmd, 1)
 
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[ERR] worker run: panic recovered: %v\n%s", r, debug.Stack())
+					ch <- nil
+				}
+			}()
+
 			metrics.ActiveWorkers.Inc()
+			defer metrics.ActiveWorkers.Dec()
+
 			cmd, err := w.parse.Execute(ctx, w.id)
-			metrics.ActiveWorkers.Dec()
 			if err != nil {
 				log.Printf("[WARN] worker run: %s", err)
 			}
