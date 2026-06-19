@@ -114,6 +114,9 @@ services:
   oafse-prometheus:
     image: prom/prometheus:latest
     container_name: oafse_prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yaml"
+      - "--storage.tsdb.path=/prometheus"
     volumes:
       - ./prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
       - oafse-prometheus-data:/prometheus
