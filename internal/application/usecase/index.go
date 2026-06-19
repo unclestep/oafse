@@ -8,6 +8,7 @@ import (
 
 	"oafse/internal/application/port"
 	"oafse/internal/domain/model"
+	"oafse/internal/infrastructure/metrics"
 )
 
 type Index struct {
@@ -113,9 +114,13 @@ func (uc *Index) process(parent context.Context) error {
 	if err != nil {
 		return fmt.Errorf("get unvectorized: %w", err)
 	}
+	metrics.IndexerBacklog.Set(float64(len(pages)))
 	if len(pages) == 0 {
 		return nil
 	}
+
+	metrics.IndexerProgress.Set(float64(len(pages)))
+	defer metrics.IndexerProgress.Set(0)
 
 	timeout := time.Duration(len(pages)) * 100 * time.Millisecond
 	ctx, cancel := context.WithTimeout(parent, timeout)
@@ -135,7 +140,9 @@ func (uc *Index) process(parent context.Context) error {
 		p.Vector = vectors[i]
 		if _, err := uc.pageRepo.SavePage(ctx, p); err != nil {
 			log.Printf("[WARN] save vector page %s: %s", p.URL, err)
+			continue
 		}
+		metrics.PagesEmbedded.Inc()
 	}
 
 	return nil

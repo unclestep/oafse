@@ -25,6 +25,8 @@ import (
 	"oafse/internal/infrastructure/storage/repo"
 
 	read "codeberg.org/readeck/go-readability/v2"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	goredis "github.com/redis/go-redis/v9"
 	"go.uber.org/fx"
 )
@@ -48,6 +50,7 @@ func NewCrawler(startURL string, reindex bool) fx.Option {
 		dsMod,
 		crawlAppMod,
 		workerMod,
+		metricsMod,
 		fx.Invoke(func(lc fx.Lifecycle, urlRepo port.URLRepo, cfg *model.CrawlConfig) {
 			var cancel context.CancelFunc
 
@@ -146,8 +149,27 @@ var repoMod = fx.Module(
 
 var dsMod = fx.Module(
 	"ds",
-	fx.Provide(func() (postgresStorage.DBTX, error) {
+	fx.Provide(func() (*pgxpool.Pool, error) {
 		return postgresStorage.NewPool(os.Getenv("POSTGRES_DSN"))
+	}),
+	fx.Provide(func(pool *pgxpool.Pool) postgresStorage.DBTX {
+		return pool
+	}),
+	fx.Invoke(func(lc fx.Lifecycle, pool *pgxpool.Pool) {
+		var cancel context.CancelFunc
+
+		lc.Append(fx.Hook{
+			OnStart: func(ctx context.Context) error {
+				appCtx, canc := context.WithCancel(context.Background())
+				cancel = canc
+				postgresStorage.StartPoolStatsPolling(appCtx, pool, 15*time.Second)
+				return nil
+			},
+			OnStop: func(ctx context.Context) error {
+				cancel()
+				return nil
+			},
+		})
 	}),
 	fx.Provide(fx.Annotate(
 		func() *postgresStorage.NotifyDS {
@@ -219,6 +241,7 @@ func NewIndexer() fx.Option {
 		repoMod,
 		embedderMod,
 		indexAppMod,
+		metricsMod,
 		fx.Invoke(func(lc fx.Lifecycle, embedder port.Embedder) {
 			lc.Append(fx.Hook{
 				OnStop: func(ctx context.Context) error {
@@ -303,5 +326,36 @@ func NewServer() fx.Option {
 		embedderMod,
 		queryAppMod,
 		httpMod,
+		metricsMod,
 	)
+}
+
+var metricsMod = fx.Module(
+	"metrics",
+	fx.Invoke(registerMetricsServer),
+)
+
+func registerMetricsServer(lc fx.Lifecycle) {
+	mux := http.NewServeMux()
+	mux.Handle("GET /metrics", promhttp.Handler())
+
+	server := http.Server{
+		Handler: mux,
+		Addr:    os.Getenv("METRICS_ADDR"),
+	}
+
+	lc.Append(fx.Hook{
+		OnStart: func(ctx context.Context) error {
+			go func() {
+				if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+					log.Printf("metrics server error: %s", err)
+				}
+			}()
+			log.Printf("metrics server has started on: %s", os.Getenv("METRICS_ADDR"))
+			return nil
+		},
+		OnStop: func(ctx context.Context) error {
+			return server.Shutdown(ctx)
+		},
+	})
 }

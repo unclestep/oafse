@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -30,6 +29,7 @@ func (s *PageDS) GetPage(parent context.Context, url string) (*storage.PageDB, e
 
 	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
 	defer cancel()
+	defer observeQuery("get_page")()
 
 	var page storage.PageDB
 	var title, desc, content *string
@@ -37,7 +37,7 @@ func (s *PageDS) GetPage(parent context.Context, url string) (*storage.PageDB, e
 	var crawledAt *time.Time
 	err := s.dbtx.QueryRow(ctx, query, url).Scan(&page.URL, &title, &desc, &content, &crawledAt, &vector)
 	if err != nil {
-		return nil, fmt.Errorf("get page: %w", err)
+		return nil, wrapDBErr("get page", err)
 	}
 
 	if title != nil {
@@ -70,11 +70,12 @@ func (s *PageDS) PageExists(parent context.Context, url string) (bool, error) {
 
 	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
 	defer cancel()
+	defer observeQuery("page_exists")()
 
 	var exists bool
 	err := s.dbtx.QueryRow(ctx, query, url).Scan(&exists)
 	if err != nil {
-		return false, fmt.Errorf("page exists: %w", err)
+		return false, wrapDBErr("page exists", err)
 	}
 
 	return exists, nil
@@ -95,6 +96,7 @@ func (s *PageDS) InsertPage(parent context.Context, page *storage.PageDB) (int64
 
 	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
 	defer cancel()
+	defer observeQuery("insert_page")()
 
 	var vectorArg *pgvector.Vector
 	if len(page.Vector) > 0 {
@@ -105,7 +107,7 @@ func (s *PageDS) InsertPage(parent context.Context, page *storage.PageDB) (int64
 	var pageID int64
 	err := s.dbtx.QueryRow(ctx, query, page.URL, page.Title, page.Description, page.Content, page.CrawledAt, vectorArg).Scan(&pageID)
 	if err != nil {
-		return -1, fmt.Errorf("insert page: %w", err)
+		return -1, wrapDBErr("insert page", err)
 	}
 
 	return pageID, nil
@@ -120,10 +122,11 @@ func (s *PageDS) InsertLink(parent context.Context, parentURL string, childPageI
 
 	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
 	defer cancel()
+	defer observeQuery("insert_link")()
 
 	_, err := s.dbtx.Exec(ctx, query, parentURL, childPageID)
 	if err != nil {
-		return fmt.Errorf("insert link: %w", err)
+		return wrapDBErr("insert link", err)
 	}
 
 	return nil
@@ -139,15 +142,16 @@ func (s *PageDS) GetUnvectorized(parent context.Context) ([]*storage.PageDB, err
 
 	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
 	defer cancel()
+	defer observeQuery("get_unvectorized")()
 
 	rows, err := s.dbtx.Query(ctx, query)
 	if err != nil {
-		return nil, fmt.Errorf("get unvectorized: %w", err)
+		return nil, wrapDBErr("get unvectorized", err)
 	}
 
 	pages, err := pgx.CollectRows(rows, pgx.RowToAddrOfStructByNameLax[storage.PageDB])
 	if err != nil {
-		return nil, fmt.Errorf("get unvectorized: %w", err)
+		return nil, wrapDBErr("get unvectorized", err)
 	}
 
 	return pages, nil
@@ -169,10 +173,11 @@ func (s *PageDS) FindSimilar(parent context.Context, queryVector []float32, limi
 
 	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
 	defer cancel()
+	defer observeQuery("find_similar")()
 
 	rows, err := s.dbtx.Query(ctx, query, pgvector.NewVector(queryVector), minSimilarity, limit)
 	if err != nil {
-		return nil, fmt.Errorf("find similar: %w", err)
+		return nil, wrapDBErr("find similar", err)
 	}
 	defer rows.Close()
 
@@ -183,7 +188,7 @@ func (s *PageDS) FindSimilar(parent context.Context, queryVector []float32, limi
 		var crawledAt *time.Time
 		var vec pgvector.Vector
 		if err := rows.Scan(&page.URL, &title, &description, &content, &crawledAt, &vec); err != nil {
-			return nil, fmt.Errorf("find similar: %w", err)
+			return nil, wrapDBErr("find similar", err)
 		}
 
 		page.Vector = vec.Slice()
@@ -204,7 +209,7 @@ func (s *PageDS) FindSimilar(parent context.Context, queryVector []float32, limi
 		pages = append(pages, &page)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("find similar: %w", err)
+		return nil, wrapDBErr("find similar", err)
 	}
 	return pages, nil
 }

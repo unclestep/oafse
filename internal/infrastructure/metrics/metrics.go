@@ -62,11 +62,16 @@ var (
 		Help: "Pages crawled but not yet embedded.",
 	})
 
-	EmbedDuration = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name:    "indexer_embed_duration_seconds",
-		Help:    "Time to embed one text",
-		Buckets: prometheus.DefBuckets,
+	IndexerProgress = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "indexer_pages_in_progress",
+		Help: "Pages currently being embedded.",
 	})
+
+	EmbedDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "indexer_embed_duration_seconds",
+		Help:    "Embedding call latency, partitioned by call method.",
+		Buckets: prometheus.DefBuckets,
+	}, []string{"method"}) // single | batch
 
 	PagesEmbedded = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "indexer_pages_embedded_total",
@@ -93,5 +98,62 @@ var (
 	EmptySearchResults = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "search_empty_results_total",
 		Help: "Total search queries that returned zero results.",
+	})
+
+	// Postgres
+	PostgresQueryDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "postgres_query_duration_seconds",
+		Help:    "Postgres query latency, partitioned by query.",
+		Buckets: prometheus.DefBuckets,
+	}, []string{"query"}) // get_page | page_exists | insert_page | insert_link | get_unvectorized | find_similar
+
+	PostgresErrors = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "postgres_errors_total",
+		Help: "Total postgres errors partitioned by reason.",
+	}, []string{"reason"}) // transient | fatal
+
+	PostgresPoolAcquiredConns = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "postgres_pool_acquired_conns",
+		Help: "Connections currently acquired from the pool.",
+	})
+
+	PostgresPoolIdleConns = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "postgres_pool_idle_conns",
+		Help: "Idle connections currently in the pool.",
+	})
+
+	PostgresPoolTotalConns = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "postgres_pool_total_conns",
+		Help: "Total connections currently in the pool (acquired + idle + constructing).",
+	})
+
+	PostgresPoolMaxConns = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "postgres_pool_max_conns",
+		Help: "Maximum size the pool can reach.",
+	})
+
+	PostgresPoolAcquireCount = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "postgres_pool_acquire_total",
+		Help: "Total successful connection acquires from the pool.",
+	})
+
+	PostgresPoolAcquireDuration = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "postgres_pool_acquire_duration_seconds_total",
+		Help: "Cumulative time spent waiting to acquire a connection from the pool.",
+	})
+
+	PostgresPoolEmptyAcquireCount = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "postgres_pool_empty_acquire_total",
+		Help: "Total acquires that had to wait because the pool had no idle connection.",
+	})
+
+	PostgresPoolEmptyAcquireWaitTime = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "postgres_pool_empty_acquire_wait_seconds_total",
+		Help: "Cumulative wait time for acquires that had to wait because the pool had no idle connection.",
+	})
+
+	PostgresPoolCanceledAcquireCount = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "postgres_pool_canceled_acquire_total",
+		Help: "Total acquires canceled by their context before a connection was obtained.",
 	})
 )

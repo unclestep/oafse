@@ -3,9 +3,11 @@ package handler
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	"oafse/internal/application/port"
 	j "oafse/internal/delivery/http/json"
+	"oafse/internal/infrastructure/metrics"
 )
 
 type QueryHandler struct {
@@ -31,11 +33,21 @@ func NewQueryHandler(uc port.QueryUseCase) *QueryHandler {
 // @Failure      500    {object} json.ErrorResponse
 // @Router       /search [get]
 func (h *QueryHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	defer func() {
+		metrics.SearchDuration.Observe(time.Since(start).Seconds())
+	}()
+
+	writeError := func(msg string, status int) {
+		metrics.SearchRequests.WithLabelValues(strconv.Itoa(status)).Inc()
+		j.WriteError(w, msg, status)
+	}
+
 	query := r.URL.Query().Get("q")
 	limitStr := r.URL.Query().Get("limit")
 
 	if query == "" {
-		j.WriteError(w, "missing query parameter 'q'", http.StatusBadRequest)
+		writeError("missing query parameter 'q'", http.StatusBadRequest)
 		return
 	}
 
@@ -45,7 +57,7 @@ func (h *QueryHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	} else {
 		limitTmp, err := strconv.Atoi(limitStr)
 		if err != nil || limitTmp <= 0 {
-			j.WriteError(w, "limit should be a natural number", http.StatusBadRequest)
+			writeError("limit should be a natural number", http.StatusBadRequest)
 			return
 		}
 		limit = limitTmp
@@ -53,9 +65,14 @@ func (h *QueryHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	pages, err := h.uc.Execute(r.Context(), query, limit)
 	if err != nil {
-		j.WriteError(w, err.Error(), http.StatusInternalServerError)
+		writeError(err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	if len(pages) == 0 {
+		metrics.EmptySearchResults.Inc()
+	}
+
+	metrics.SearchRequests.WithLabelValues(strconv.Itoa(http.StatusOK)).Inc()
 	j.WriteJSON(w, j.ToSearchResponse(pages), http.StatusOK)
 }

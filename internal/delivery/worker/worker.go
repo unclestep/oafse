@@ -9,6 +9,7 @@ import (
 
 	"oafse/internal/application/port"
 	"oafse/internal/domain/model"
+	"oafse/internal/infrastructure/metrics"
 )
 
 type Worker struct {
@@ -58,7 +59,9 @@ func (w *Worker) run(parent context.Context) {
 		ch := make(chan *port.ParseCmd, 1)
 
 		go func() {
+			metrics.ActiveWorkers.Inc()
 			cmd, err := w.parse.Execute(ctx, w.id)
+			metrics.ActiveWorkers.Dec()
 			if err != nil {
 				log.Printf("[WARN] worker run: %s", err)
 			}
@@ -74,9 +77,11 @@ func (w *Worker) run(parent context.Context) {
 			}
 			switch cmd.Directive {
 			case port.DirectiveSleep:
+				timer := time.NewTimer(cmd.SleepFor)
 				select {
-				case <-time.After(cmd.SleepFor):
+				case <-timer.C:
 				case <-parent.Done():
+					timer.Stop()
 					return
 				}
 			case port.DirectiveStop:
