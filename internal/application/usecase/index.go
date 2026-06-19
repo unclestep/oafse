@@ -12,14 +12,12 @@ import (
 
 type Index struct {
 	pageRepo port.PageDBRepo
-	urlRepo  port.URLRepo
 	embedder port.Embedder
 }
 
-func NewIndex(pageRepo port.PageDBRepo, urlRepo port.URLRepo, embedder port.Embedder) *Index {
+func NewIndex(pageRepo port.PageDBRepo, embedder port.Embedder) *Index {
 	return &Index{
 		pageRepo: pageRepo,
-		urlRepo:  urlRepo,
 		embedder: embedder,
 	}
 }
@@ -29,13 +27,6 @@ func (uc *Index) Execute(ctx context.Context) {
 	defer listenCancel()
 
 	hasWork, errCh := uc.pageRepo.StartListeningPages(listenCtx)
-
-	queueInsert, err := uc.urlRepo.Subscribe(listenCtx)
-	if err != nil {
-		log.Printf("[ERR] index execute: subscribe: %s", err)
-		return
-	}
-
 	errCount := 0
 
 	if err := uc.process(ctx); err != nil {
@@ -48,13 +39,6 @@ func (uc *Index) Execute(ctx context.Context) {
 	for {
 		select {
 		case <-hasWork:
-			if err := uc.process(ctx); err != nil {
-				errCount++
-				log.Printf("[WARN] index process: %s", err)
-			} else {
-				errCount = 0
-			}
-		case <-queueInsert:
 			if err := uc.process(ctx); err != nil {
 				errCount++
 				log.Printf("[WARN] index process: %s", err)

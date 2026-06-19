@@ -34,7 +34,7 @@ func NewClient(databaseURL string) (*redis.Client, error) {
 		return nil, err
 	}
 
-	if err := rdb.ConfigSet(ctx, "notify-keyspace-events", "KEA").Err(); err != nil {
+	if err := rdb.ConfigSet(ctx, "notify-keyspace-events", "Kl").Err(); err != nil {
 		rdb.Close() //nolint:errcheck
 		return nil, fmt.Errorf("config set notify-keyspace-events: %w", err)
 	}

@@ -14,38 +14,51 @@ import (
 )
 
 type Worker struct {
-	id      string
-	parse   port.ParseUseCase
-	urlRepo port.URLRepo
+	id     string
+	parse  port.ParseUseCase
+	notify <-chan struct{}
 }
 
-func NewWorker(id string, parse port.ParseUseCase, urlRepo port.URLRepo) *Worker {
+func NewWorker(id string, parse port.ParseUseCase, notify <-chan struct{}) *Worker {
 	return &Worker{
-		id:      id,
-		parse:   parse,
-		urlRepo: urlRepo,
+		id:     id,
+		parse:  parse,
+		notify: notify,
 	}
 }
 
 type WorkerPool struct {
-	wg      *sync.WaitGroup
-	workers []*Worker
+	wg          *sync.WaitGroup
+	workers     []*Worker
+	notifyChans []chan struct{}
+	urlRepo     port.URLRepo
 }
 
 func NewWorkerPool(cfg *model.CrawlConfig, parse port.ParseUseCase, urlRepo port.URLRepo) *WorkerPool {
 	workers := make([]*Worker, cfg.WorkersCount)
+	notifyChans := make([]chan struct{}, cfg.WorkersCount)
 	for i := range cfg.WorkersCount {
-		workers[i] = NewWorker(strconv.Itoa(i), parse, urlRepo)
+		notifyChans[i] = make(chan struct{}, 1)
+		workers[i] = NewWorker(strconv.Itoa(i), parse, notifyChans[i])
 	}
 
 	pool := &WorkerPool{
-		wg:      &sync.WaitGroup{},
-		workers: workers,
+		wg:          &sync.WaitGroup{},
+		workers:     workers,
+		notifyChans: notifyChans,
+		urlRepo:     urlRepo,
 	}
 	return pool
 }
 
 func (p *WorkerPool) Run(ctx context.Context) {
+	notify, err := p.urlRepo.Subscribe(ctx)
+	if err != nil {
+		log.Printf("[ERR] worker pool run: subscribe: %s", err)
+		return
+	}
+	go p.fanOut(ctx, notify)
+
 	for _, worker := range p.workers {
 		p.wg.Go(func() {
 			worker.run(ctx)
@@ -55,16 +68,25 @@ func (p *WorkerPool) Run(ctx context.Context) {
 	log.Printf("[INFO] parsing is finished")
 }
 
-func (w *Worker) run(parent context.Context) {
-	notify, err := w.urlRepo.Subscribe(parent)
-	if err != nil {
-		log.Printf("[ERR] worker run: subscribe: %s", err)
-		return
+func (p *WorkerPool) fanOut(ctx context.Context, notify <-chan struct{}) {
+	for {
+		select {
+		case <-notify:
+			for _, ch := range p.notifyChans {
+				select {
+				case ch <- struct{}{}:
+				default:
+				}
+			}
+		case <-ctx.Done():
+			return
+		}
 	}
+}
 
+func (w *Worker) run(parent context.Context) {
 	for {
 		ctx, cancel := context.WithTimeout(parent, 15*time.Second)
-
 		ch := make(chan *port.ParseCmd, 1)
 
 		go func() {
@@ -96,7 +118,7 @@ func (w *Worker) run(parent context.Context) {
 				timer := time.NewTimer(cmd.SleepFor)
 				select {
 				case <-timer.C:
-				case <-notify:
+				case <-w.notify:
 					timer.Stop()
 				case <-parent.Done():
 					timer.Stop()
@@ -104,7 +126,7 @@ func (w *Worker) run(parent context.Context) {
 				}
 			} else {
 				select {
-				case <-notify:
+				case <-w.notify:
 				case <-parent.Done():
 					return
 				}

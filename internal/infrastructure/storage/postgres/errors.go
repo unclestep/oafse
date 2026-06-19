@@ -21,9 +21,16 @@ func observeQuery(query string) func() {
 	}
 }
 
+var transientPgErrorCodes = map[string]bool{
+	"40001": true, // serialization_failure
+	"40P01": true, // deadlock_detected
+	"53300": true, // too_many_connections
+	"57P03": true, // cannot_connect_now
+}
+
 func isTransientErr(err error) bool {
-	if _, ok := errors.AsType[*pgconn.PgError](err); ok {
-		return false
+	if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok {
+		return transientPgErrorCodes[pgErr.Code]
 	}
 
 	if pgconn.SafeToRetry(err) {

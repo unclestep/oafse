@@ -4,8 +4,13 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 
+RUN go install github.com/swaggo/swag/cmd/swag@latest
+
 COPY . .
+
+RUN swag init -g main.go -d ./cmd/crawler,./internal/delivery/http/handler/crawl,./internal/delivery/http/json -o docs/crawler
 RUN CGO_ENABLED=0 go build -o crawler ./cmd/crawler
+RUN chmod +x /app/crawler
 
 FROM alpine:latest
 
