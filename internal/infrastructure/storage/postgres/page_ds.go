@@ -83,14 +83,15 @@ func (s *PageDS) PageExists(parent context.Context, url string) (bool, error) {
 
 func (s *PageDS) InsertPage(parent context.Context, page *storage.PageDB) (int64, error) {
 	query := `
-		INSERT INTO pages (url, title, description, content, crawled_at, vector)
-		VALUES ($1, $2, $3, $4, $5, l2_normalize($6::vector))
+		INSERT INTO pages (url, title, description, content, crawled_at, vector, can_be_vectorized)
+		VALUES ($1, $2, $3, $4, $5, l2_normalize($6::vector), $7)
 		ON CONFLICT (url) DO UPDATE SET
 			title = EXCLUDED.title,
 			description = EXCLUDED.description,
 			content = EXCLUDED.content,
 			crawled_at = EXCLUDED.crawled_at,
-			vector = l2_normalize(EXCLUDED.vector)
+			vector = l2_normalize(EXCLUDED.vector),
+			can_be_vectorized = EXCLUDED.can_be_vectorized
 		RETURNING id
 	`
 
@@ -98,14 +99,21 @@ func (s *PageDS) InsertPage(parent context.Context, page *storage.PageDB) (int64
 	defer cancel()
 	defer observeQuery("insert_page")()
 
+	// page.Vector distinguishes three states: nil (not embedded yet, e.g. fresh crawl),
+	// non-empty (a real vector), and non-nil-but-empty (the embedder tried and the text
+	// was too large to embed) - that last case is the only one that should set
+	// can_be_vectorized to false so GetUnvectorized stops retrying it forever.
 	var vectorArg *pgvector.Vector
+	canBeVectorized := true
 	if len(page.Vector) > 0 {
 		tmp := pgvector.NewVector(page.Vector)
 		vectorArg = &tmp
+	} else if page.Vector != nil {
+		canBeVectorized = false
 	}
 
 	var pageID int64
-	err := s.dbtx.QueryRow(ctx, query, page.URL, page.Title, page.Description, page.Content, page.CrawledAt, vectorArg).Scan(&pageID)
+	err := s.dbtx.QueryRow(ctx, query, page.URL, page.Title, page.Description, page.Content, page.CrawledAt, vectorArg, canBeVectorized).Scan(&pageID)
 	if err != nil {
 		return -1, wrapDBErr("insert page", err)
 	}
@@ -137,6 +145,7 @@ func (s *PageDS) GetUnvectorized(parent context.Context) ([]*storage.PageDB, err
 		SELECT url, title, description, content, crawled_at
 		FROM pages
 		WHERE vector IS NULL
+			AND can_be_vectorized
 			AND (title <> '' OR description <> '' OR content <> '')
 	`
 

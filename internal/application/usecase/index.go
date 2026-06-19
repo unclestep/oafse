@@ -142,7 +142,9 @@ func (uc *Index) process(parent context.Context) error {
 			log.Printf("[WARN] save vector page %s: %s", p.URL, err)
 			continue
 		}
-		metrics.PagesEmbedded.Inc()
+		if len(p.Vector) > 0 {
+			metrics.PagesEmbedded.Inc()
+		}
 	}
 
 	return nil
