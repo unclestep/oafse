@@ -7,10 +7,12 @@ services:
     env_file: ".env"
     ports:
       - 14444:14444
+      - 9100:9100
     environment:
       POSTGRES_DSN: ${POSTGRES_DOCKER_DSN}
       EMBEDDER_URL: ${EMBEDDER_DOCKER_URL}
       SERVER_ADDR: ${SERVER_ADDR}
+      METRICS_ADDR: ${METRICS_ADDR}
     networks:
       - oafse-net
     depends_on:
@@ -25,9 +27,12 @@ services:
       dockerfile: Dockerfile.crawler
     container_name: oafse-crawler
     env_file: ".env"
+    ports:
+      - 9101:9100
     environment:
       POSTGRES_DSN: ${POSTGRES_DOCKER_DSN}
       REDIS_DSN: ${REDIS_DOCKER_DSN}
+      METRICS_ADDR: ${METRICS_ADDR}
     networks:
       - oafse-net
     depends_on:
@@ -44,10 +49,13 @@ services:
       dockerfile: Dockerfile.indexer
     container_name: oafse-indexer
     env_file: ".env"
+    ports:
+      - 9102:9100
     environment:
       POSTGRES_DSN: ${POSTGRES_DOCKER_DSN}
       REDIS_DSN: ${REDIS_DOCKER_DSN}
       EMBEDDER_URL: ${EMBEDDER_DOCKER_URL}
+      METRICS_ADDR: ${METRICS_ADDR}
     networks:
       - oafse-net
     depends_on:
@@ -101,8 +109,38 @@ services:
       timeout: 5s
       retries: 5
 
+  oafse-prometheus:
+    image: prom/prometheus:latest
+    container_name: oafse_prometheus
+    volumes:
+      - ./prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+      - oafse-prometheus-data:/prometheus
+    ports:
+      - 9090:9090
+    networks:
+      - oafse-net
+    depends_on:
+      - oafse-server
+      - oafse-crawler
+      - oafse-indexer
+
+  oafse-grafana:
+    image: grafana/grafana:latest
+    container_name: oafse_grafana
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - oafse-grafana-data:/var/lib/grafana
+    ports:
+      - 3000:3000
+    networks:
+      - oafse-net
+    depends_on:
+      - oafse-prometheus
+
 networks:
   oafse-net:
 
 volumes:
   oafse-db:
+  oafse-prometheus-data:
+  oafse-grafana-data:
