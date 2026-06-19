@@ -93,3 +93,17 @@ func (u *URL) IsSameDomain(other *URL) bool {
 func (u *URL) Equals(other *URL) bool {
 	return u.String() == other.String()
 }
+
+func NormalizeStartURL(raw string) (string, error) {
+	if !strings.HasPrefix(raw, "http://") && !strings.HasPrefix(raw, "https://") {
+		raw = "https://" + raw
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", fmt.Errorf("normalize start url: %w", err)
+	}
+	if u.Host == "" {
+		return "", fmt.Errorf("normalize start url: missing host in %q", raw)
+	}
+	return u.Scheme + "://" + u.Host, nil
+}

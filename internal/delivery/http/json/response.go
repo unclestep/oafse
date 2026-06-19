@@ -20,6 +20,11 @@ type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
+type CrawlResponse struct {
+	Status string `json:"status"`
+	URL    string `json:"url"`
+}
+
 func WriteJSON(w http.ResponseWriter, v any, status int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

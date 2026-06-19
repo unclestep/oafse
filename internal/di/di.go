@@ -31,12 +31,11 @@ import (
 	"go.uber.org/fx"
 )
 
-func NewCrawler(startURL string, reindex bool) fx.Option {
+func NewCrawler() fx.Option {
 	return fx.Module(
 		"crawler",
 		fx.Provide(func() *model.CrawlConfig {
 			return &model.CrawlConfig{
-				StartURL:                  startURL,
 				WorkersCount:              20,
 				TryLim:                    5,
 				TryBaseInterval:           5 * time.Second,
@@ -51,6 +50,7 @@ func NewCrawler(startURL string, reindex bool) fx.Option {
 		crawlAppMod,
 		workerMod,
 		metricsMod,
+		crawlControlMod,
 		fx.Invoke(func(lc fx.Lifecycle, urlRepo port.URLRepo, cfg *model.CrawlConfig) {
 			var cancel context.CancelFunc
 
@@ -58,15 +58,8 @@ func NewCrawler(startURL string, reindex bool) fx.Option {
 				OnStart: func(ctx context.Context) error {
 					appCtx, canc := context.WithCancel(context.Background())
 					cancel = canc
-
-					if reindex {
-						if err := urlRepo.ResetCrawlCache(ctx); err != nil {
-							return err
-						}
-					}
-
 					urlRepo.StartHealthChecking(appCtx, cfg)
-					return urlRepo.Start(ctx, cfg.StartURL)
+					return nil
 				},
 				OnStop: func(ctx context.Context) error {
 					cancel()
@@ -288,9 +281,17 @@ var httpMod = fx.Module(
 	fx.Provide(fx.Annotate(
 		handler.NewQueryHandler,
 		fx.As(new(http.Handler)),
+		fx.ResultTags(`name:"queryHandler"`),
 	)),
-	fx.Provide(deliveryhttp.NewRouter),
-	fx.Invoke(registerServer),
+	fx.Provide(fx.Annotate(
+		deliveryhttp.NewRouter,
+		fx.ParamTags(`name:"queryHandler"`),
+		fx.ResultTags(`name:"searchRouter"`),
+	)),
+	fx.Invoke(fx.Annotate(
+		registerServer,
+		fx.ParamTags("", `name:"searchRouter"`),
+	)),
 )
 
 func registerServer(lc fx.Lifecycle, router *deliveryhttp.Router) {
@@ -334,6 +335,46 @@ var metricsMod = fx.Module(
 	"metrics",
 	fx.Invoke(registerMetricsServer),
 )
+
+var crawlControlMod = fx.Module(
+	"crawl-control",
+	fx.Provide(fx.Annotate(
+		handler.NewCrawlHandler,
+		fx.As(new(http.Handler)),
+		fx.ResultTags(`name:"crawlHandler"`),
+	)),
+	fx.Provide(fx.Annotate(
+		deliveryhttp.NewCrawlRouter,
+		fx.ParamTags(`name:"crawlHandler"`),
+		fx.ResultTags(`name:"crawlRouter"`),
+	)),
+	fx.Invoke(fx.Annotate(
+		registerCrawlControlServer,
+		fx.ParamTags("", `name:"crawlRouter"`),
+	)),
+)
+
+func registerCrawlControlServer(lc fx.Lifecycle, router *deliveryhttp.Router) {
+	server := http.Server{
+		Handler: middleware.WithRecovery(router.Handler()),
+		Addr:    os.Getenv("CRAWLER_ADDR"),
+	}
+
+	lc.Append(fx.Hook{
+		OnStart: func(ctx context.Context) error {
+			go func() {
+				if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+					log.Printf("crawl control server error: %s", err)
+				}
+			}()
+			log.Printf("crawl control server has started on: %s", os.Getenv("CRAWLER_ADDR"))
+			return nil
+		},
+		OnStop: func(ctx context.Context) error {
+			return server.Shutdown(ctx)
+		},
+	})
+}
 
 func registerMetricsServer(lc fx.Lifecycle) {
 	mux := http.NewServeMux()

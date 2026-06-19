@@ -29,10 +29,12 @@ services:
     env_file: ".env"
     ports:
       - 9101:9100
+      - 14443:14443
     environment:
       POSTGRES_DSN: ${POSTGRES_DOCKER_DSN}
       REDIS_DSN: ${REDIS_DOCKER_DSN}
       METRICS_ADDR: ${METRICS_ADDR}
+      CRAWLER_ADDR: ${CRAWLER_ADDR}
     networks:
       - oafse-net
     depends_on:

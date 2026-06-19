@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"log"
 	"os"
 
@@ -11,13 +10,17 @@ import (
 	"oafse/cmd/helpers"
 	"oafse/internal/di"
 	"oafse/internal/infrastructure/storage/postgres"
+
+	_ "oafse/docs/crawler"
 )
 
+// @title           oafse Crawl Control API
+// @version         1.0
+// @description     Seeds sites for the crawler to start from.
+// @host            localhost:14443
+// @BasePath        /
+// @produce         json
 func main() {
-	startURL := flag.String("u", "https://quotes.toscrape.com", "Start URL for crawling")
-	reindex := flag.Bool("reindex", false, "Reindex the domain")
-	flag.Parse()
-
 	_ = godotenv.Load(".env")
 	helpers.FallbackEnv("POSTGRES_DSN", "POSTGRES_LOCAL_DSN")
 	helpers.FallbackEnv("REDIS_DSN", "REDIS_LOCAL_DSN")
@@ -26,10 +29,5 @@ func main() {
 		log.Fatalf("migration failed: %s", err)
 	}
 
-	baseURL, err := helpers.NormalizeStartURL(*startURL)
-	if err != nil {
-		log.Fatalf("invalid start URL: %s", err)
-	}
-
-	fx.New(di.NewCrawler(baseURL, *reindex)).Run()
+	fx.New(di.NewCrawler()).Run()
 }

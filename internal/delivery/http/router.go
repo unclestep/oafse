@@ -19,6 +19,15 @@ func NewRouter(queryHandler http.Handler) *Router {
 	return &Router{mux: mux}
 }
 
+func NewCrawlRouter(crawlHandler http.Handler) *Router {
+	mux := http.NewServeMux()
+
+	mux.Handle("/swagger/", httpSwagger.WrapHandler)
+	mux.Handle("POST /crawl", crawlHandler)
+
+	return &Router{mux: mux}
+}
+
 func (r *Router) Handler() http.Handler {
 	return r.mux
 }
