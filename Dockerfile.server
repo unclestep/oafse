@@ -8,7 +8,7 @@ RUN go install github.com/swaggo/swag/cmd/swag@latest
 
 COPY . .
 
-RUN swag init -g cmd/server/main.go -o docs
+RUN swag init -g main.go -d ./cmd/server,./internal/delivery/http/handler/search,./internal/delivery/http/json -o docs
 RUN CGO_ENABLED=0 go build -o server ./cmd/server
 RUN chmod +x /app/server
 

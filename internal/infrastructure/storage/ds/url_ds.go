@@ -17,4 +17,5 @@ type URLCacheDS interface {
 	MarkProcessed(ctx context.Context, url string, status storage.CrawlStatus) error
 	GetCrawlMetadata(ctx context.Context) (*storage.CrawlMetadata, error)
 	ResetCrawlCache(ctx context.Context) error
+	Subscribe(ctx context.Context) (<-chan struct{}, error)
 }

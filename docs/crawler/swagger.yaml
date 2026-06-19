@@ -1,0 +1,59 @@
+basePath: /
+definitions:
+  json.CrawlResponse:
+    properties:
+      status:
+        type: string
+      url:
+        type: string
+    type: object
+  json.ErrorResponse:
+    properties:
+      error:
+        type: string
+    type: object
+host: localhost:14443
+info:
+  contact: {}
+  description: Seeds sites for the crawler to start from.
+  title: oafse Crawl Control API
+  version: "1.0"
+paths:
+  /crawl:
+    post:
+      description: Adds url to the crawl queue so the crawler starts discovering pages
+        from it. reindex=true wipes the entire shared crawl cache first - it is not
+        scoped to just this url's site.
+      parameters:
+      - description: Site URL to start crawling from
+        example: https://books.toscrape.com
+        in: query
+        name: url
+        required: true
+        type: string
+      - description: Wipe the entire crawl cache before seeding
+        example: false
+        in: query
+        name: reindex
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/json.CrawlResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/json.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/json.ErrorResponse'
+      summary: Seed a crawl
+      tags:
+      - crawl
+produces:
+- application/json
+swagger: "2.0"

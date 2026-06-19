@@ -20,14 +20,5 @@ type QueryUseCase interface {
 }
 
 type ParseCmd struct {
-	Directive
 	SleepFor time.Duration
 }
-
-type Directive int
-
-const (
-	DirectiveContinue Directive = iota
-	DirectiveSleep
-	DirectiveStop
-)

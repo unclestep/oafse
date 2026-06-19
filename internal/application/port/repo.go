@@ -12,6 +12,7 @@ var (
 	ErrQueueEmpty   = errors.New("queue is empty")
 	ErrPageNotFound = errors.New("page not found")
 	ErrDontWait     = errors.New("dont wait")
+	ErrTransient    = errors.New("transient error")
 )
 
 type CrawlMetadata struct {
@@ -28,6 +29,7 @@ type URLRepo interface {
 	MarkProcessed(ctx context.Context, url string, status model.CrawlStatus) error
 	GetCrawlMetadata(ctx context.Context) (*CrawlMetadata, error)
 	ResetCrawlCache(ctx context.Context) error
+	Subscribe(ctx context.Context) (<-chan struct{}, error)
 }
 
 type PageDBRepo interface {

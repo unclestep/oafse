@@ -8,6 +8,7 @@ import (
 	"time"
 
 	domain "oafse/internal/domain/model"
+	"oafse/internal/infrastructure/metrics"
 	storage "oafse/internal/infrastructure/storage/model"
 
 	"github.com/redis/go-redis/v9"
@@ -75,11 +76,21 @@ func (s *URLDS) StartHealthChecking(ctx context.Context, cfg *domain.CrawlConfig
 			select {
 			case <-ticker.C:
 				_ = s.HealthCheck(ctx, cfg.HealthCheckWorryThreshold)
+				s.updateQueueDepthMetrics(ctx)
 			case <-ctx.Done():
 				return
 			}
 		}
 	}()
+}
+
+func (s *URLDS) updateQueueDepthMetrics(ctx context.Context) {
+	if n, err := s.rdb.LLen(ctx, KeyQueue).Result(); err == nil {
+		metrics.QueueDepth.Set(float64(n))
+	}
+	if n, err := s.rdb.ZCard(ctx, KeyRetry).Result(); err == nil {
+		metrics.RetryQueueDepth.Set(float64(n))
+	}
 }
 
 func (s *URLDS) GetURLInfo(ctx context.Context, url string) (*URLInfo, error) {

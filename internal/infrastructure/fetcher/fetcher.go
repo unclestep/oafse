@@ -8,12 +8,14 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
 
 	"oafse/internal/application/port"
 	"oafse/internal/domain/model"
+	"oafse/internal/infrastructure/metrics"
 )
 
 var (
@@ -121,8 +123,17 @@ func isSPA(htmlBytes []byte) bool {
 
 func (f *Fetcher) Fetch(parent context.Context, u *model.URL) (*port.FetchData, error) {
 	wrap := func(err error) error {
+		metrics.FetchErrors.WithLabelValues(classifyFetchErrReason(err)).Inc()
 		return fmt.Errorf("fetch: %w", err)
 	}
+
+	start := time.Now()
+	viaChrome := false
+	defer func() {
+		if !viaChrome {
+			metrics.FetchDuration.WithLabelValues("http").Observe(time.Since(start).Seconds())
+		}
+	}()
 
 	req, err := http.NewRequestWithContext(parent, http.MethodGet, u.String(), nil)
 	if err != nil {
@@ -144,6 +155,9 @@ func (f *Fetcher) Fetch(parent context.Context, u *model.URL) (*port.FetchData, 
 	}
 
 	if fetchStatus := port.ClassifyStatus(resp.StatusCode); fetchStatus != port.FetchOK {
+		if resp.StatusCode >= 500 {
+			metrics.FetchErrors.WithLabelValues("http_5xx").Inc()
+		}
 		return &port.FetchData{
 			Status: fetchStatus,
 		}, nil
@@ -170,8 +184,11 @@ func (f *Fetcher) Fetch(parent context.Context, u *model.URL) (*port.FetchData, 
 	if err != nil {
 		return nil, wrap(err)
 	}
+	metrics.BytesFetched.Add(float64(len(pageContent)))
 
 	if isSPA(pageContent) {
+		metrics.SPAFallbacks.Inc()
+		viaChrome = true
 		fd, err := f.parseViaChrome(u)
 		if err != nil {
 			return nil, wrap(err)
@@ -191,6 +208,11 @@ func (f *Fetcher) Fetch(parent context.Context, u *model.URL) (*port.FetchData, 
 }
 
 func (f *Fetcher) parseViaChrome(u *model.URL) (*port.FetchData, error) {
+	start := time.Now()
+	defer func() {
+		metrics.FetchDuration.WithLabelValues("chromedp").Observe(time.Since(start).Seconds())
+	}()
+
 	tabCtx, tabCancel := chromedp.NewContext(f.ctx)
 	defer tabCancel()
 
@@ -207,6 +229,8 @@ func (f *Fetcher) parseViaChrome(u *model.URL) (*port.FetchData, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	metrics.BytesFetched.Add(float64(len(htmlContent)))
 
 	return &port.FetchData{
 		URL:    u,

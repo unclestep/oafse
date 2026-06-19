@@ -19,6 +19,46 @@ func NewQueue(rdb *redis.Client) *Queue {
 	return &Queue{rdb: rdb}
 }
 
+func (q *Queue) queueInsertChannel() string {
+	return fmt.Sprintf("__keyspace@%d__:%s", q.rdb.Options().DB, KeyQueue)
+}
+
+func (q *Queue) Subscribe(ctx context.Context) (<-chan struct{}, error) {
+	pubsub := q.rdb.Subscribe(ctx, q.queueInsertChannel())
+
+	if _, err := pubsub.Receive(ctx); err != nil {
+		pubsub.Close() //nolint:errcheck
+		return nil, fmt.Errorf("subscribe: %w", err)
+	}
+
+	notify := make(chan struct{}, 1)
+
+	go func() {
+		defer pubsub.Close() //nolint:errcheck
+
+		ch := pubsub.Channel()
+		for {
+			select {
+			case msg, ok := <-ch:
+				if !ok {
+					return
+				}
+				if msg.Payload != "lpush" {
+					continue
+				}
+				select {
+				case notify <- struct{}{}:
+				default:
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	return notify, nil
+}
+
 var popURLScript = redis.NewScript(`
 	local keyQueue = KEYS[1]
 	local keyURLStatus = KEYS[2]

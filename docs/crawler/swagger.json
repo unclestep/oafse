@@ -1,0 +1,86 @@
+{
+    "produces": [
+        "application/json"
+    ],
+    "swagger": "2.0",
+    "info": {
+        "description": "Seeds sites for the crawler to start from.",
+        "title": "oafse Crawl Control API",
+        "contact": {},
+        "version": "1.0"
+    },
+    "host": "localhost:14443",
+    "basePath": "/",
+    "paths": {
+        "/crawl": {
+            "post": {
+                "description": "Adds url to the crawl queue so the crawler starts discovering pages from it. reindex=true wipes the entire shared crawl cache first - it is not scoped to just this url's site.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "crawl"
+                ],
+                "summary": "Seed a crawl",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "https://books.toscrape.com",
+                        "description": "Site URL to start crawling from",
+                        "name": "url",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "example": false,
+                        "description": "Wipe the entire crawl cache before seeding",
+                        "name": "reindex",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/json.CrawlResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/json.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/json.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "json.CrawlResponse": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "json.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                }
+            }
+        }
+    }
+}

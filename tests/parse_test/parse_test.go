@@ -17,7 +17,6 @@ import (
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
 
-	"oafse/internal/application/port"
 	"oafse/internal/application/usecase"
 	"oafse/internal/domain/model"
 	"oafse/internal/domain/service"
@@ -219,12 +218,12 @@ func (s *ParseSuite) TestExecuteParsesPageAndStoresResult() {
 	s.ElementsMatch(internalLinks, s.childLinks(ctx, ts.URL))
 }
 
-func (s *ParseSuite) TestExecuteEmptyQueueReturnsStop() {
+func (s *ParseSuite) TestExecuteEmptyQueueReturnsIdleWait() {
 	ctx := context.Background()
 	cmd, err := s.newUseCase(http.DefaultClient).Execute(ctx, "worker-0")
 	s.Require().NoError(err)
 	s.Require().NotNil(cmd)
-	s.Equal(port.DirectiveStop, cmd.Directive)
+	s.Zero(cmd.SleepFor)
 }
 
 func (s *ParseSuite) TestExecuteServerErrorRetriesURL() {
@@ -309,11 +308,10 @@ func (s *ParseSuite) TestExecuteEmptyQueueWithProcessingReturnsSleep() {
 	_, err := s.urlDS.TakeOn(ctx, "other-worker")
 	s.Require().NoError(err)
 
-	// Queue is empty but there is a URL in processing -> DirectiveSleep
+	// Queue is empty but there is a URL in processing -> sleep with a deadline
 	cmd, err := s.newUseCase(http.DefaultClient).Execute(ctx, "worker-0")
 	s.Require().NoError(err)
 	s.Require().NotNil(cmd)
-	s.Equal(port.DirectiveSleep, cmd.Directive)
 	s.Positive(cmd.SleepFor)
 }
 
@@ -337,12 +335,11 @@ func (s *ParseSuite) TestExecuteEmptyQueueWithRetryReturnsSleep() {
 	s.Require().NoError(err)
 	s.Equal(storage.RetryCrawlStatus, info.Status)
 
-	// Immediate second execute: queue empty, retry not ready yet -> DirectiveSleep
-	// SleepFor reflects the time until EarliestRetry
+	// Immediate second execute: queue empty, retry not ready yet -> sleep
+	// with SleepFor reflecting the time until EarliestRetry
 	cmd, err = uc.Execute(ctx, "worker-0")
 	s.Require().NoError(err)
 	s.Require().NotNil(cmd)
-	s.Equal(port.DirectiveSleep, cmd.Directive)
 	s.Positive(cmd.SleepFor)
 }
 

@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"oafse/internal/infrastructure/metrics"
 	pb "oafse/pkg/proto/embedder"
 )
 
@@ -35,8 +37,14 @@ func (e *Embedder) Close() error {
 const maxBatchSize = 3_500_000
 
 func (e *Embedder) Embed(ctx context.Context, text string) ([]float32, error) {
+	start := time.Now()
+	defer func() {
+		metrics.EmbedDuration.WithLabelValues("single").Observe(time.Since(start).Seconds())
+	}()
+
 	resp, err := e.pb.Embed(ctx, &pb.EmbedRequest{Text: text}, grpc.WaitForReady(true))
 	if err != nil {
+		metrics.EmbedErrors.WithLabelValues("connection_error").Inc()
 		return nil, fmt.Errorf("embed: %w", err)
 	}
 
@@ -56,6 +64,7 @@ func (e *Embedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32,
 		textSize := len(texts[i])
 		if curBatchSize+textSize > maxBatchSize && start == i {
 			log.Printf("[WARN] text %.10s... is too long to be vectorized", texts[i])
+			metrics.EmbedErrors.WithLabelValues("too_big_text").Inc()
 			vectors = append(vectors, []float32{})
 
 			i++
@@ -87,8 +96,14 @@ func (e *Embedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32,
 }
 
 func (e *Embedder) embedBatch(ctx context.Context, texts []string) ([][]float32, error) {
+	start := time.Now()
+	defer func() {
+		metrics.EmbedDuration.WithLabelValues("batch").Observe(time.Since(start).Seconds())
+	}()
+
 	resp, err := e.pb.EmbedBatch(ctx, &pb.EmbedBatchRequest{Texts: texts}, grpc.WaitForReady(true))
 	if err != nil {
+		metrics.EmbedErrors.WithLabelValues("connection_error").Inc()
 		return nil, err
 	}
 

@@ -97,6 +97,39 @@ func (s *RedisSuite) TestQueuePushURLsConcurrent() {
 	s.checkQueue(len(urls)*3, len(urls)*3)
 }
 
+func (s *RedisSuite) TestSubscribeNotifiesOnPush() {
+	ctx := context.Background()
+
+	notify, err := s.curator.Subscribe(ctx)
+	s.Require().NoError(err)
+
+	ok, err := s.curator.PushURL(ctx, &storage.URLCache{URL: "URL-notify"})
+	s.Require().NoError(err)
+	s.True(ok)
+
+	select {
+	case <-notify:
+	case <-time.After(2 * time.Second):
+		s.Fail("did not receive notification after push")
+	}
+}
+
+func (s *RedisSuite) TestSubscribeIgnoresNonLpushEvents() {
+	ctx := context.Background()
+
+	notify, err := s.curator.Subscribe(ctx)
+	s.Require().NoError(err)
+
+	_, err = s.curator.TakeOn(ctx, "worker-0")
+	s.Require().ErrorIs(err, port.ErrQueueEmpty)
+
+	select {
+	case <-notify:
+		s.Fail("must not be notified by a take-on against an empty queue")
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
 func (s *RedisSuite) TestTakeOnConcurrent() {
 	urls := s.pushURLs()
 	total := len(urls) * len(urls[0])
